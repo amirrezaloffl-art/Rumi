@@ -1,0 +1,13 @@
+# Local folder mirror written by the app (plain, unencrypted JSON) — never commit it
+*.local.json
+data/*.local.json
+# Editor / OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Backups contain customer data — never commit them
+*backup*.json
+
+# Local Claude Code tooling
+.claude/

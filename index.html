@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Rumi — Pet Shop</title>
+<meta name="description" content="Private pet-shop orders, stock and profit — works offline, syncs through GitHub." />
+<meta name="robots" content="noindex, nofollow" />
+<link rel="manifest" href="manifest.webmanifest" />
+<meta name="theme-color" content="#EEF0F7" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="Rumi" />
+<link rel="icon" href="icon.svg" type="image/svg+xml" />
+<link rel="icon" href="icon-192.png" sizes="192x192" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Vazirmatn:wght@400;500;700&display=swap" />
+<link rel="preload" href="fonts/Barbra-High.ttf" as="font" type="font/ttf" crossorigin />
+<link rel="stylesheet" href="styles.css" />
+<script>
+  /* Apply saved theme before first paint to avoid a flash */
+  (function () {
+    var t = 'light';
+    try { t = localStorage.getItem('appavet-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch (e) {}
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
+</head>
+<body>
+<div class="app-bg" aria-hidden="true"></div>
+
+<!-- SVG icon sprite -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-dashboard" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="2"/><rect x="14" y="3" width="7" height="5" rx="2"/><rect x="14" y="12" width="7" height="9" rx="2"/><rect x="3" y="16" width="7" height="5" rx="2"/></symbol>
+    <symbol id="i-orders" viewBox="0 0 24 24"><path d="M5 2.5v19l2.3-1.4 2.4 1.4 2.3-1.4 2.3 1.4 2.4-1.4 2.3 1.4v-19l-2.3 1.4-2.4-1.4L12 3.9 9.7 2.5 7.3 3.9Z"/><path d="M9 8.5h6M9 12h6M9 15.5h4"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="17" rx="3"/><path d="M16 2.5v4M8 2.5v4M3 10h18"/></symbol>
+    <symbol id="i-profits" viewBox="0 0 24 24"><path d="M22 7l-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/></symbol>
+    <symbol id="i-expenses" viewBox="0 0 24 24"><path d="M19 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0 0 4h14a2 2 0 0 1 2 2v3h-4a2 2 0 0 0 0 4h4v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5"/></symbol>
+    <symbol id="i-reports" viewBox="0 0 24 24"><path d="M14 2.5H6.5a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8Z"/><path d="M14 2.5V8h5.5M8.5 18v-2M12 18v-4.5M15.5 18v-7"/></symbol>
+    <symbol id="i-catalog" viewBox="0 0 24 24"><path d="M21 8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4a2 2 0 0 0 1-1.7Z"/><path d="M3.3 7 12 12l8.7-5M12 22V12M7.5 4.3l9 5.1"/></symbol>
+    <symbol id="i-contacts" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></symbol>
+    <symbol id="i-archive" viewBox="0 0 24 24"><rect x="2.5" y="3" width="19" height="5" rx="1.5"/><path d="M4.5 8v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8M10 12h4"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="3.5" y="11" width="17" height="10.5" rx="3"/><path d="M7.5 11V7.5a4.5 4.5 0 0 1 9 0V11"/></symbol>
+    <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.7-9h1.8a4.5 4.5 0 1 1 0 9Z"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-paw" viewBox="0 0 24 24"><circle cx="11" cy="4.5" r="2"/><circle cx="18" cy="8.5" r="2"/><circle cx="20" cy="15.5" r="2"/><path d="M9 10a5 5 0 0 1 5 5v3.5a3.5 3.5 0 0 1-6.8 1.2c-.3-.8-.8-1.5-1.5-2a4 4 0 0 1 3.3-7.7Z"/><circle cx="4.5" cy="9.5" r="2"/></symbol>
+  </defs>
+</svg>
+
+<!-- ===== Desktop sidebar ===== -->
+<aside class="sidebar glass">
+  <div class="brand">
+    <div class="logo"><span class="logo-r">R</span></div>
+    <div>
+      <div class="brand-name">Rumi</div>
+      <div class="brand-sub">Pet Shop Dashboard</div>
+    </div>
+  </div>
+  <nav class="nav">
+    <a href="#/dashboard" data-route="dashboard"><svg class="ico"><use href="#i-dashboard"/></svg> Dashboard</a>
+    <a href="#/orders"    data-route="orders"   ><svg class="ico"><use href="#i-orders"/></svg> Orders</a>
+    <a href="#/calendar"  data-route="calendar" ><svg class="ico"><use href="#i-calendar"/></svg> Calendar</a>
+    <a href="#/profits"   data-route="profits"  ><svg class="ico"><use href="#i-profits"/></svg> Profits</a>
+    <a href="#/expenses"  data-route="expenses" ><svg class="ico"><use href="#i-expenses"/></svg> Expenses</a>
+    <a href="#/reports"   data-route="reports"  ><svg class="ico"><use href="#i-reports"/></svg> Reports</a>
+    <a href="#/catalog"   data-route="catalog"  ><svg class="ico"><use href="#i-catalog"/></svg> Catalog</a>
+    <a href="#/customers" data-route="customers"><svg class="ico"><use href="#i-contacts"/></svg> Contacts</a>
+    <a href="#/archive"   data-route="archive"  ><svg class="ico"><use href="#i-archive"/></svg> Archive</a>
+    <a href="#/settings"  data-route="settings" ><svg class="ico"><use href="#i-settings"/></svg> Settings</a>
+  </nav>
+  <div class="sidebar-foot">
+    <button id="newOrderBtn" class="btn primary block"><svg class="ico"><use href="#i-plus"/></svg> New Order</button>
+    <button class="sync-pill" type="button" title="Cloud sync status — click to sync now"><span class="dot"></span><span class="txt">Sync off</span></button>
+    <div class="foot-row">
+      <button id="themeToggle" class="icon-btn glass-thin" type="button" aria-label="Toggle light / dark theme"><svg class="ico"><use href="#i-moon"/></svg></button>
+      <button class="icon-btn glass-thin lock-now" type="button" aria-label="Lock now" title="Lock now"><svg class="ico"><use href="#i-lock"/></svg></button>
+      <div class="backup-status" id="backupStatus">Last backup: never</div>
+    </div>
+  </div>
+</aside>
+
+<main class="main">
+  <header class="topbar">
+    <div class="topbar-title">
+      <div class="mobile-brand"><span class="logo-r">R</span> Rumi</div>
+      <h1 id="pageTitle">Dashboard</h1>
+    </div>
+    <div class="topbar-side">
+      <button class="sync-pill compact" type="button" title="Cloud sync status — tap to sync now"><span class="dot"></span><span class="txt">Sync off</span></button>
+    </div>
+    <div class="topbar-actions" id="topbarActions"></div>
+  </header>
+  <section id="view" class="view"></section>
+</main>
+
+<!-- ===== Mobile / tablet floating tab bar ===== -->
+<nav class="tabbar" aria-label="Main">
+  <div class="tabbar-inner glass-strong">
+    <a href="#/dashboard" data-route="dashboard"><svg class="ico"><use href="#i-dashboard"/></svg><span>Home</span></a>
+    <a href="#/orders" data-route="orders"><svg class="ico"><use href="#i-orders"/></svg><span>Orders</span></a>
+    <button type="button" class="tab-add glass-tint" id="tabAdd" aria-label="New order"><svg class="ico"><use href="#i-plus"/></svg></button>
+    <a href="#/calendar" data-route="calendar"><svg class="ico"><use href="#i-calendar"/></svg><span>Calendar</span></a>
+    <button type="button" class="tab-more" id="tabMore" data-more="1"><svg class="ico"><use href="#i-more"/></svg><span>More</span></button>
+  </div>
+</nav>
+
+<!-- "More" sheet -->
+<div class="modal-backdrop hidden" id="moreSheet">
+  <div class="modal sheet">
+    <div class="sheet-handle"></div>
+    <header class="modal-head"><h2>More</h2><button class="icon-btn" data-close-modal="moreSheet" aria-label="Close"><svg class="ico"><use href="#i-close"/></svg></button></header>
+    <div class="modal-body">
+      <div class="more-grid">
+        <a href="#/profits" data-route="profits"><span class="mg-ico" style="--c:var(--accent-rgb)"><svg class="ico"><use href="#i-profits"/></svg></span>Profits</a>
+        <a href="#/expenses" data-route="expenses"><span class="mg-ico" style="--c:var(--protein-rgb)"><svg class="ico"><use href="#i-expenses"/></svg></span>Expenses</a>
+        <a href="#/reports" data-route="reports"><span class="mg-ico" style="--c:var(--water-rgb)"><svg class="ico"><use href="#i-reports"/></svg></span>Reports</a>
+        <a href="#/catalog" data-route="catalog"><span class="mg-ico" style="--c:var(--carbs-rgb)"><svg class="ico"><use href="#i-catalog"/></svg></span>Catalog</a>
+        <a href="#/customers" data-route="customers"><span class="mg-ico" style="--c:var(--fiber-rgb)"><svg class="ico"><use href="#i-contacts"/></svg></span>Contacts</a>
+        <a href="#/archive" data-route="archive"><span class="mg-ico" style="--c:var(--fat-rgb)"><svg class="ico"><use href="#i-archive"/></svg></span>Archive</a>
+        <a href="#/settings" data-route="settings"><span class="mg-ico" style="--c:var(--ink-rgb)"><svg class="ico"><use href="#i-settings"/></svg></span>Settings</a>
+        <button type="button" class="more-theme"><span class="mg-ico" style="--c:var(--accent-rgb)"><svg class="ico"><use href="#i-moon"/></svg></span><span class="lbl">Dark mode</span></button>
+        <button type="button" class="lock-now"><span class="mg-ico" style="--c:var(--bad-rgb)"><svg class="ico"><use href="#i-lock"/></svg></span>Lock</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Order modal -->
+<div class="modal-backdrop hidden" id="orderModal">
+  <div class="modal large order-sheet">
+    <div class="sheet-handle"></div>
+    <header class="modal-head">
+      <h2 id="orderModalTitle">New Order</h2>
+      <div class="head-actions">
+        <button type="button" class="btn sm hidden" id="invoiceOrderBtn">Invoice</button>
+        <button class="icon-btn" data-close-modal="orderModal" aria-label="Close"><svg class="ico"><use href="#i-close"/></svg></button>
+      </div>
+    </header>
+    <form id="orderForm" class="modal-form" novalidate>
+      <div class="modal-body">
+        <section class="form-sec">
+          <h4>Customer</h4>
+          <label class="field">
+            <span>Name</span>
+            <input id="f_customer" dir="auto" autocomplete="off" />
+          </label>
+          <div class="grid two keep">
+            <label class="field"><span>Phone 1</span><input type="tel" id="f_phone1" autocomplete="off" /></label>
+            <label class="field"><span>Phone 2 <em>(optional)</em></span><input type="tel" id="f_phone2" autocomplete="off" /></label>
+          </div>
+          <label class="field"><span>Address</span><textarea id="f_address" rows="2" dir="auto"></textarea></label>
+          <label class="field"><span>Email <em>(optional)</em></span><input type="email" id="f_email" autocomplete="off" /></label>
+        </section>
+
+        <section class="form-sec">
+          <h4>Order</h4>
+          <div class="grid two keep date-row">
+            <label class="field">
+              <span>Date</span>
+              <div class="date-input">
+                <input type="text" id="f_date" placeholder="1405/02/14" autocomplete="off" inputmode="numeric" />
+                <button type="button" class="cal-toggle" id="dateCalToggle" title="Toggle Jalali / Gregorian">J</button>
+              </div>
+              <small class="hint" id="dateHint"></small>
+            </label>
+            <label class="field"><span>Time</span><input type="time" id="f_time" /></label>
+          </div>
+          <div class="grid two keep">
+            <label class="field">
+              <span>Pet</span>
+              <select id="f_pet"><option value="dog">Dog</option><option value="cat">Cat</option></select>
+            </label>
+            <label class="field switch-field">
+              <span>Wholesale / petshop</span>
+              <span class="switch"><input type="checkbox" id="f_wholesale" /><span class="knob"></span></span>
+            </label>
+          </div>
+          <div class="grid two keep">
+            <div class="field">
+              <span>Payment</span>
+              <div class="seg-toggle" id="f_paid"><button type="button" data-val="1">Paid</button><button type="button" data-val="0">Unpaid</button></div>
+            </div>
+            <div class="field">
+              <span>Shipping</span>
+              <div class="seg-toggle" id="f_shipped"><button type="button" data-val="1">Sent</button><button type="button" data-val="0">Not sent</button></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="form-sec">
+          <div class="sec-head">
+            <h4>Products</h4>
+            <div class="sec-actions">
+              <button type="button" class="btn ghost sm" id="addGiftLine" title="Free item sent with the order — not charged, shown without price on the invoice">🎁 Gift</button>
+              <button type="button" class="btn sm" id="addProductLine">+ Product</button>
+            </div>
+          </div>
+          <div id="productLines" class="order-lines"></div>
+          <div class="gifts-block hidden" id="giftsBlock">
+            <h4>Gifts <em>free for the customer, no price on the invoice</em></h4>
+            <div id="giftLines" class="order-lines"></div>
+          </div>
+          <datalist id="productList"></datalist>
+          <datalist id="customerList"></datalist>
+        </section>
+
+        <section class="form-sec">
+          <h4>Charges</h4>
+          <div class="grid three keep">
+            <label class="field"><span>Shipping</span><input type="text" inputmode="decimal" data-num="1" id="f_shipping" value="0" /></label>
+            <label class="field"><span>Discount</span><input type="text" inputmode="decimal" data-num="1" id="f_discount" value="0" /></label>
+            <label class="field"><span>Loss</span><input type="text" inputmode="decimal" data-num="1" id="f_loss" value="0" /></label>
+          </div>
+          <small class="hint">Loss = defects or refunds. It is taken from profit and never shown on the invoice. Shipping is not profit.</small>
+        </section>
+
+        <section class="summary">
+          <div class="sum-row"><span>Shipping</span><strong id="orderShipping">0</strong></div>
+          <div class="sum-row"><span>Discount</span><strong id="orderDiscount">0</strong></div>
+          <div class="sum-row"><span>Gifts cost</span><strong id="orderGifts">0</strong></div>
+          <div class="sum-row"><span>Loss</span><strong id="orderLoss">0</strong></div>
+          <div class="sum-row profit"><span>Order profit</span><strong id="orderProfit">0</strong></div>
+          <div class="sum-row grand"><span>Customer pays</span><strong id="orderTotal">0</strong></div>
+        </section>
+      </div>
+      <footer class="modal-foot">
+        <button type="button" class="btn ghost" data-close-modal="orderModal">Cancel</button>
+        <button type="submit" class="btn primary" id="saveOrderBtn">Save order</button>
+      </footer>
+    </form>
+  </div>
+</div>
+
+<!-- Day-orders modal (calendar click) -->
+<div class="modal-backdrop hidden" id="dayModal">
+  <div class="modal">
+    <div class="sheet-handle"></div>
+    <header class="modal-head">
+      <h2 id="dayModalTitle">Orders</h2>
+      <button class="icon-btn" data-close-modal="dayModal" aria-label="Close"><svg class="ico"><use href="#i-close"/></svg></button>
+    </header>
+    <div class="modal-body" id="dayModalBody"></div>
+  </div>
+</div>
+
+<!-- Confirm modal -->
+<div class="modal-backdrop hidden" id="confirmModal">
+  <div class="modal small">
+    <div class="sheet-handle"></div>
+    <header class="modal-head">
+      <h2 id="confirmTitle">Confirm</h2>
+      <button class="icon-btn" data-close-modal="confirmModal" aria-label="Close"><svg class="ico"><use href="#i-close"/></svg></button>
+    </header>
+    <div class="modal-body"><p id="confirmText"></p></div>
+    <footer class="modal-foot">
+      <button class="btn ghost" data-close-modal="confirmModal">Cancel</button>
+      <button class="btn danger" id="confirmOk">Confirm</button>
+    </footer>
+  </div>
+</div>
+
+<!-- Choice modal (first sync, etc.) -->
+<div class="modal-backdrop hidden" id="choiceModal" data-sticky="1">
+  <div class="modal small">
+    <div class="sheet-handle"></div>
+    <header class="modal-head"><h2 id="choiceTitle">Choose</h2></header>
+    <div class="modal-body"><p id="choiceText" style="white-space:pre-line"></p><div id="choiceButtons" class="choice-buttons"></div></div>
+  </div>
+</div>
+
+<!-- Password prompt (password changed on another device) -->
+<div class="modal-backdrop hidden" id="pwModal" data-sticky="1">
+  <div class="modal small">
+    <div class="sheet-handle"></div>
+    <header class="modal-head"><h2>Password needed</h2></header>
+    <form class="modal-body" id="pwForm">
+      <p id="pwText"></p>
+      <input type="password" id="pwInput" class="input" autocomplete="current-password" placeholder="Password" />
+      <footer class="modal-foot" style="padding:0;border:0">
+        <button type="button" class="btn ghost" id="pwCancel">Not now</button>
+        <button type="submit" class="btn primary">Continue</button>
+      </footer>
+    </form>
+  </div>
+</div>
+
+<!-- Customer edit modal -->
+<div class="modal-backdrop hidden" id="customerModal">
+  <div class="modal">
+    <div class="sheet-handle"></div>
+    <header class="modal-head">
+      <h2 id="customerModalTitle">Edit Contact</h2>
+      <button class="icon-btn" data-close-modal="customerModal" aria-label="Close"><svg class="ico"><use href="#i-close"/></svg></button>
+    </header>
+    <form id="customerForm" class="modal-body">
+      <label class="field">
+        <span>Name <em>(optional — a phone number is enough)</em></span>
+        <input type="text" id="c_name" autocomplete="off" />
+      </label>
+      <div class="grid two">
+        <label class="field">
+          <span>Phone 1</span>
+          <input type="tel" id="c_phone1" autocomplete="off" />
+        </label>
+        <label class="field">
+          <span>Phone 2 <em>(optional)</em></span>
+          <input type="tel" id="c_phone2" autocomplete="off" />
+        </label>
+      </div>
+      <label class="field">
+        <span>Email</span>
+        <input type="email" id="c_email" autocomplete="off" />
+      </label>
+      <label class="field">
+        <span>Address</span>
+        <textarea id="c_address" rows="2"></textarea>
+      </label>
+
+      <div class="form-divider">Pet details</div>
+      <div class="grid two">
+        <label class="field">
+          <span>Pet name</span>
+          <input type="text" id="c_petName" autocomplete="off" />
+        </label>
+        <label class="field">
+          <span>Species</span>
+          <select id="c_petSpecies">
+            <option value="">—</option>
+            <option value="dog">Dog</option>
+            <option value="cat">Cat</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+      </div>
+      <div class="grid two">
+        <label class="field">
+          <span>Breed</span>
+          <input type="text" id="c_petBreed" autocomplete="off" />
+        </label>
+        <label class="field">
+          <span>Birthday <em>(optional)</em></span>
+          <input type="text" id="c_petBirthday" placeholder="1400/05/12 or 2021/08/03" autocomplete="off" />
+        </label>
+      </div>
+      <label class="field">
+        <span>Notes</span>
+        <textarea id="c_notes" rows="3"></textarea>
+      </label>
+
+      <footer class="modal-foot">
+        <button type="button" class="btn ghost" data-close-modal="customerModal">Cancel</button>
+        <button type="submit" class="btn primary" id="saveCustomerBtn">Save Customer</button>
+      </footer>
+    </form>
+  </div>
+</div>
+
+<!-- Expense add/edit modal -->
+<div class="modal-backdrop hidden" id="expenseModal">
+  <div class="modal small">
+    <div class="sheet-handle"></div>
+    <header class="modal-head">
+      <h2 id="expenseModalTitle">Add Expense</h2>
+      <button class="icon-btn" data-close-modal="expenseModal" aria-label="Close"><svg class="ico"><use href="#i-close"/></svg></button>
+    </header>
+    <form id="expenseForm" class="modal-body" novalidate>
+      <div class="grid two">
+        <label class="field">
+          <span>Date</span>
+          <input type="text" id="x_date" placeholder="1405/02/14" autocomplete="off" inputmode="numeric" />
+        </label>
+        <label class="field">
+          <span>Category</span>
+          <select id="x_category"></select>
+        </label>
+      </div>
+      <label class="field">
+        <span>Payee / description</span>
+        <input type="text" id="x_name" autocomplete="off" />
+      </label>
+      <label class="field">
+        <span>Amount</span>
+        <input type="text" inputmode="decimal" data-num="1" id="x_amount" />
+      </label>
+      <footer class="modal-foot">
+        <button type="button" class="btn ghost" data-close-modal="expenseModal">Cancel</button>
+        <button type="submit" class="btn primary" id="saveExpenseBtn">Save Expense</button>
+      </footer>
+    </form>
+  </div>
+</div>
+
+<!-- Import contacts modal -->
+<div class="modal-backdrop hidden" id="importContactsModal">
+  <div class="modal">
+    <div class="sheet-handle"></div>
+    <header class="modal-head">
+      <h2>Import contacts</h2>
+      <button class="icon-btn" data-close-modal="importContactsModal" aria-label="Close"><svg class="ico"><use href="#i-close"/></svg></button>
+    </header>
+    <div class="modal-body">
+      <p class="muted-text">
+        Pick a text file or paste a list. Each contact = a name line, a phone line, and (optionally) an email line.
+        Numbers starting with <b>+98</b> are read as starting with <b>0</b>, and Persian digits become English.
+        Numbers you already have are skipped — existing contacts are never changed.
+      </p>
+      <input type="file" id="imp_file" accept=".txt,.csv,text/plain" />
+      <label class="field">
+        <span>Pasted list</span>
+        <textarea id="imp_text" rows="8" placeholder="نام&#10;+989123456789&#10;email@example.com&#10;…"></textarea>
+      </label>
+      <div id="imp_result" class="muted-text"></div>
+    </div>
+    <footer class="modal-foot">
+      <button class="btn ghost" data-close-modal="importContactsModal">Cancel</button>
+      <button class="btn" id="imp_preview" type="button">Preview</button>
+      <button class="btn primary" id="imp_run" type="button">Import</button>
+    </footer>
+  </div>
+</div>
+
+<!-- ===== Lock screen ===== -->
+<div class="lock" id="lockScreen">
+  <div class="lock-card glass-strong">
+    <div class="lock-logo glass-tint"><span class="logo-r">R</span></div>
+    <h1 id="lockTitle">Rumi</h1>
+    <p id="lockSub">Loading…</p>
+    <form id="lockForm" autocomplete="on" novalidate>
+      <input type="text" name="username" value="rumi" autocomplete="username" hidden />
+      <div id="lockConnect" class="lock-connect hidden">
+        <div class="grid two">
+          <label class="field"><span>GitHub owner</span><input id="lc_owner" autocomplete="off" placeholder="your-username" /></label>
+          <label class="field"><span>Data repository</span><input id="lc_repo" autocomplete="off" placeholder="Rumi" /></label>
+        </div>
+        <label class="field"><span>File path</span><input id="lc_path" autocomplete="off" value="data/rumi-data.json" /></label>
+        <label class="field"><span>Access token</span><input id="lc_token" type="password" autocomplete="off" placeholder="github_pat_…" /></label>
+      </div>
+      <label class="field"><span id="lockPwLabel">Password</span><input type="password" id="lockPw" autocomplete="current-password" /></label>
+      <label class="field hidden" id="lockPw2Wrap"><span>Repeat password</span><input type="password" id="lockPw2" autocomplete="new-password" /></label>
+      <div class="lock-err" id="lockErr" role="alert"></div>
+      <button type="submit" class="btn primary block lg" id="lockBtn">Unlock</button>
+    </form>
+    <button type="button" class="btn ghost sm" id="lockAlt"></button>
+    <button type="button" class="btn ghost sm hidden" id="lockReset">Forgot password? Reset this device</button>
+  </div>
+</div>
+
+<div class="toast hidden" id="toast"></div>
+
+<script src="jalali.js"></script>
+<script src="db.js"></script>
+<script src="security.js"></script>
+<script src="sync.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
