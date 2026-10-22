@@ -41,6 +41,9 @@
     customersFilter: 'all',         // 'all' | 'buyers' | 'leads'
     catalogView: 'list',            // 'list' | 'cards'
     catalogSort: 'name',            // name | stockAsc | stockDesc | recent | expiry | value
+    catalogQuery: '',               // catalog search text (kept across saves / redraws)
+    catalogOpen: {},                // product id -> true while its details are expanded
+    customersQuery: '',             // contacts search text (kept across saves / redraws)
     formCalMode: 'jalali',          // for order form date input
     editingOrderId: null,
     editingCustomerId: null,
@@ -204,9 +207,9 @@
       p = DB.put(store, rec);
     }
     return p.then(function () {
-      render();
+      renderInPlace();
       toastAction((label || ARCHIVE_LABELS[store] || 'Item') + ' archived.', 'Undo', function () {
-        restoreRecord(store, rec).then(function () { toast('Restored', 'ok'); render(); });
+        restoreRecord(store, rec).then(function () { toast('Restored', 'ok'); renderInPlace(); });
       });
     }).catch(function () { toast('Could not archive', 'error'); });
   }
@@ -409,9 +412,20 @@
   }
   function navigate(route) { location.hash = '#/' + route; }
 
+  // Redraw after a save without losing your place: filters/search live in `state`,
+  // and the scroll position is put back once the page is rebuilt.
+  function renderInPlace() {
+    var y = window.scrollY;
+    var vh = $('#view');
+    vh.style.minHeight = vh.offsetHeight + 'px'; // keep the page tall while it is rebuilt, so the scroll doesn't jump
+    return render().then(function () {
+      window.scrollTo(0, y);
+      vh.style.minHeight = '';
+    });
+  }
   var MORE_ROUTES = ['profits', 'expenses', 'reports', 'catalog', 'customers', 'contact', 'archive', 'settings'];
   function render() {
-    if (!Lock.unlocked) return; // nothing is drawn behind the lock screen
+    if (!Lock.unlocked) return Promise.resolve(); // nothing is drawn behind the lock screen
     closeSelect();
     var r = currentRoute();
     $$('.nav a, .tabbar a, .more-grid a').forEach(function (a) {
@@ -428,7 +442,7 @@
     $('#topbarActions').innerHTML = '';
     var view = $('#view');
     view.innerHTML = '';
-    refreshCache().then(function () {
+    return refreshCache().then(function () {
       refreshDatalists();
       if (r === 'dashboard') renderDashboard(view);
       else if (r === 'orders') renderOrders(view);
@@ -2461,7 +2475,11 @@
       var save = isNew ? DB.add('products', data) : (function () { for (var k in data) p[k] = data[k]; return DB.put('products', p); })();
       save.then(function (id) {
         return DB.adjustStock(id, target - before, isNew ? 'Opening stock' : 'Stock count');
-      }).then(function () { toast(isNew ? 'Product added' : 'Product saved', 'ok'); render(); })
+      }).then(function (r) {
+        if (!isNew) delete state.catalogOpen[p.id]; // done with this one — fold it up
+        toast(isNew ? 'Product added' : 'Product saved', 'ok');
+        renderInPlace();
+      })
         .catch(function (err) { toast('Could not save product: ' + err.message, 'error'); });
     }
     function remove(container) {
@@ -2526,7 +2544,10 @@
     summary.addEventListener('keydown', function (e) {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
     });
-    setOpen(!!ed.isNew);
+    var pid = ed.p && ed.p.id;
+    var setOpenRaw = setOpen;
+    setOpen = function (open) { setOpenRaw(open); if (pid != null && !ed.isNew) { if (open) state.catalogOpen[pid] = true; else delete state.catalogOpen[pid]; } };
+    setOpen(!!ed.isNew || (pid != null && !!state.catalogOpen[pid]));
     return card;
   }
 
@@ -2643,7 +2664,8 @@
     ]));
 
     // ---- Filters: search + sort ----
-    var searchInput = el('input', { type: 'text', placeholder: 'Search product…', autocomplete: 'off' });
+    var searchInput = el('input', { type: 'text', placeholder: 'Search product…', autocomplete: 'off', dir: 'auto' });
+    searchInput.value = state.catalogQuery;
     var sortSelect = el('select', {}, [
       el('option', { value: 'name' }, 'Name (A–Z)'),
       el('option', { value: 'stockAsc' }, 'Stock: low → high'),
@@ -2710,7 +2732,7 @@
       ed.focus();
     }
 
-    searchInput.addEventListener('input', paint);
+    searchInput.addEventListener('input', function () { state.catalogQuery = searchInput.value; paint(); });
     sortSelect.addEventListener('change', function () { state.catalogSort = sortSelect.value; paint(); });
     paint();
   }
@@ -2761,7 +2783,8 @@
     root.appendChild(summaryHost);
 
     // ---- Filters: search + type + sort ----
-    var searchInput = el('input', { type: 'text', placeholder: 'Search name / phone / email / pet…', autocomplete: 'off' });
+    var searchInput = el('input', { type: 'text', placeholder: 'Search name / phone / email / pet…', autocomplete: 'off', dir: 'auto' });
+    searchInput.value = state.customersQuery;
     var typeSel = el('select', {}, [
       el('option', { value: 'all' }, 'All contacts'),
       el('option', { value: 'buyers' }, 'Buyers (have orders)'),
@@ -2886,7 +2909,7 @@
       listHost.appendChild(t);
     }
 
-    searchInput.addEventListener('input', paint);
+    searchInput.addEventListener('input', function () { state.customersQuery = searchInput.value; paint(); });
     typeSel.addEventListener('change', paint);
     sortSel.addEventListener('change', paint);
     paint();
@@ -3261,7 +3284,7 @@
     }).then(function () {
       closeModal('customerModal');
       toast('Contact saved', 'ok');
-      render();
+      renderInPlace();
     }).catch(function () { toast('Could not save customer', 'error'); });
   }
 
