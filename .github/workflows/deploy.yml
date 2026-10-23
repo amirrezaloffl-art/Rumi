@@ -30,7 +30,7 @@ jobs:
         run: |
           mkdir site
           cp index.html styles.css app.js db.js jalali.js security.js sync.js sw.js manifest.webmanifest *.png icon.svg site/
-          mkdir site/fonts && cp fonts/Barbra-High.ttf site/fonts/
+          mkdir site/fonts && cp fonts/Barbra-High.ttf fonts/*.woff2 fonts/fonts.css site/fonts/
           touch site/.nojekyll
           # New version id on every deploy, so installed apps notice the update and reload into it
           sed -i "s/var CACHE = 'rumi-shell-[^']*'/var CACHE = 'rumi-${GITHUB_SHA::12}'/" site/sw.js

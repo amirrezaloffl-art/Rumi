@@ -14,7 +14,7 @@
 
   // Business + financial configuration (persisted under meta key 'settings').
   var DEFAULT_SETTINGS = {
-    company: { name: 'Rumi', address: '', phone: '', taxId: '', invoiceNote: '' },
+    company: { name: 'Appavet Pet Shop', address: '', phone: '', taxId: '', invoiceNote: '' },
     finance: { currencySymbol: 'T', currencyPosition: 'suffix', decimals: 0, taxRate: 9, monthlyRevenueGoal: 0 },
     inventory: { lowStockLevel: 5 },
     allocation: { personal: 50, wholesale: 30, tax: 20 },
@@ -1143,124 +1143,203 @@
     });
   }
 
+  // Brand shown on printed invoices. Older saved settings may still say "Rumi"/"Appavet"
+  // (the app's own name) — on paper the shop's name is always used instead.
+  var SHOP_NAME = 'Appavet Pet Shop';
+  var SHOP_SITE = 'appavet.ir';
+  function invoiceShopName(co) {
+    var n = String((co && co.name) || '').trim();
+    return (!n || /^(rumi|appavet)$/i.test(n)) ? SHOP_NAME : n;
+  }
+
   // Builds a fully self-contained HTML document for one order's invoice.
   function buildInvoiceHtml(o) {
     var co = (state.settings && state.settings.company) || DEFAULT_SETTINGS.company;
     var lines = o.products || [];
+    var gifts = o.gifts || [];
     var itemsSubtotal = lines.reduce(function (s, l) { return s + num(l.sellPrice) * num(l.qty); }, 0);
     var shipping = num(o.shipping) || 0;
     var discount = num(o.discount) || 0;
     var total = itemsSubtotal + shipping - discount;
+    var units = lines.concat(gifts).reduce(function (s, l) { return s + (num(l.qty) || 0); }, 0);
 
     var d = J.dateFromIso(o.date);
-    var dateStr = d ? (J.formatJalali(d) + ' &nbsp;/&nbsp; ' + J.formatGregorian(d)) : escapeHtml(o.date || '');
+    var dateJ = d ? J.formatJalali(d) : escapeHtml(o.date || '');
+    var dateG = d ? J.formatGregorian(d) : '';
     var now = new Date();
-    var issuedStr = J.formatJalali(now) + ' ' + J.pad(now.getHours()) + ':' + J.pad(now.getMinutes());
+    var issued = J.formatJalali(now) + ' · ' + J.pad(now.getHours()) + ':' + J.pad(now.getMinutes());
 
     var rows = lines.map(function (l, i) {
-      var lineTotal = num(l.sellPrice) * num(l.qty);
       return '<tr>'
-        + '<td class="c">' + (i + 1) + '</td>'
-        + '<td>' + escapeHtml(l.name) + '</td>'
+        + '<td class="c idx">' + (i + 1) + '</td>'
+        + '<td class="item" dir="auto">' + escapeHtml(l.name) + '</td>'
         + '<td class="r">' + escapeHtml(String(l.qty)) + '</td>'
         + '<td class="r">' + escapeHtml(fmtMoney(num(l.sellPrice))) + '</td>'
-        + '<td class="r">' + escapeHtml(fmtMoney(lineTotal)) + '</td>'
+        + '<td class="r strong">' + escapeHtml(fmtMoney(num(l.sellPrice) * num(l.qty))) + '</td>'
         + '</tr>';
     }).join('');
     // Gifts: listed so the customer knows they're included, but never priced.
-    rows += (o.gifts || []).map(function (g, i) {
+    rows += gifts.map(function (g, i) {
       return '<tr class="gift">'
-        + '<td class="c">' + (lines.length + i + 1) + '</td>'
-        + '<td>' + escapeHtml(g.name) + ' <span class="gift-tag">Gift</span></td>'
+        + '<td class="c idx">' + (lines.length + i + 1) + '</td>'
+        + '<td class="item" dir="auto">' + escapeHtml(g.name) + ' <span class="pill gift-pill">Gift · هدیه</span></td>'
         + '<td class="r">' + escapeHtml(String(g.qty)) + '</td>'
-        + '<td class="r">—</td>'
-        + '<td class="r">Free</td>'
+        + '<td class="r muted">—</td>'
+        + '<td class="r free">Free</td>'
         + '</tr>';
     }).join('');
+    if (!rows) rows = '<tr><td colspan="5" class="c muted" style="padding:22px">No items</td></tr>';
 
-    var companyLines = [co.address, co.phone, co.taxId ? 'Tax ID: ' + co.taxId : '']
-      .filter(Boolean).map(function (x) { return '<div class="ph-line">' + escapeHtml(x) + '</div>'; }).join('');
-
+    var shopLines = [co.address, co.phone, co.taxId ? 'Tax ID: ' + co.taxId : '']
+      .filter(Boolean).map(function (x) { return '<div dir="auto">' + escapeHtml(x) + '</div>'; }).join('');
+    var phones = [o.phone1, o.phone2].filter(Boolean).join(' · ');
     var billLines = [
-      [o.phone1, o.phone2].filter(Boolean).join(' / '),
-      o.email || '',
-      o.address || ''
-    ].filter(Boolean).map(function (x) { return '<div class="bill-line">' + escapeHtml(x) + '</div>'; }).join('');
+      phones ? '<div class="ln"><span class="k">Phone</span><span dir="ltr">' + escapeHtml(phones) + '</span></div>' : '',
+      o.email ? '<div class="ln"><span class="k">Email</span><span>' + escapeHtml(o.email) + '</span></div>' : '',
+      o.address ? '<div class="ln addr"><span class="k">Address</span><span dir="auto">' + escapeHtml(o.address) + '</span></div>' : ''
+    ].join('');
+    var payPill = o.paid ? '<span class="pill ok">Paid</span>' : '<span class="pill due">Payment due</span>';
+    var shipPill = o.shipped ? '<span class="pill ok">Shipped</span>' : '<span class="pill muted-pill">Preparing</span>';
+    var note = co.invoiceNote ? '<div class="note" dir="auto">' + escapeHtml(co.invoiceNote) + '</div>' : '';
+    var shop = invoiceShopName(co);
 
-    var wholesaleBadge = o.isWholesale ? '<span class="badge">WHOLESALE</span>' : '';
-    var note = co.invoiceNote ? '<div class="note">' + escapeHtml(co.invoiceNote) + '</div>' : '';
+    var paw = '<svg viewBox="0 0 24 24" width="26" height="26" fill="#fff" aria-hidden="true">'
+      + '<ellipse cx="7" cy="7.2" rx="2.2" ry="2.8"/><ellipse cx="12" cy="5.4" rx="2.2" ry="2.8"/><ellipse cx="17" cy="7.2" rx="2.2" ry="2.8"/>'
+      + '<ellipse cx="20.4" cy="12" rx="1.9" ry="2.4"/><ellipse cx="3.6" cy="12" rx="1.9" ry="2.4"/>'
+      + '<path d="M12 11c3 0 6.5 4 6.5 7 0 2-1.6 3-3.3 3-1.3 0-2.1-.7-3.2-.7s-1.9.7-3.2.7C7.1 21 5.5 20 5.5 18c0-3 3.5-7 6.5-7Z"/></svg>';
 
-    return '<!doctype html><html><head><meta charset="utf-8"><title>Invoice #' + orderNo(o) + '</title>'
+    return '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Invoice #' + orderNo(o) + ' — ' + escapeHtml(shop) + '</title>'
+      + '<link rel="stylesheet" href="' + escapeHtml(new URL('fonts/fonts.css', location.href).href) + '">'
       + '<style>'
       + '*{box-sizing:border-box}'
-      + 'body{font:13px/1.5 -apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#111;margin:0;padding:32px 36px;background:#fff}'
-      + '.top{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;border-bottom:2px solid #111;padding-bottom:16px}'
-      + '.ph-name{font-size:22px;font-weight:700}'
-      + '.ph-line{font-size:12px;color:#444;margin-top:2px}'
-      + '.inv-title{font-size:26px;font-weight:700;text-align:right;letter-spacing:.02em}'
-      + '.inv-meta{font-size:12px;color:#444;text-align:right;margin-top:6px}'
-      + '.inv-meta b{color:#111}'
-      + '.parties{display:flex;justify-content:space-between;gap:24px;margin:22px 0}'
-      + '.label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#888;margin-bottom:4px}'
-      + '.bill-name{font-size:15px;font-weight:600}'
-      + '.bill-line{font-size:12px;color:#444}'
-      + '.badge{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.05em;background:#111;color:#fff;padding:2px 8px;border-radius:10px;vertical-align:middle;margin-left:8px}'
-      + 'table{width:100%;border-collapse:collapse;margin-top:8px}'
-      + 'th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#666;border-bottom:1px solid #ccc;padding:8px 6px}'
-      + 'td{padding:9px 6px;border-bottom:1px solid #eee}'
-      + 'th.r,td.r{text-align:right}th.c,td.c{text-align:center;width:34px;color:#999}'
-      + 'tr.gift td{color:#555}'
-      + '.gift-tag{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border:1px solid #999;color:#555;padding:0 6px;border-radius:10px;margin-left:6px;vertical-align:middle}'
-      + '.totals{margin-top:16px;margin-left:auto;width:260px}'
-      + '.totals .row{display:flex;justify-content:space-between;padding:5px 0;font-size:13px}'
-      + '.totals .row.grand{border-top:2px solid #111;margin-top:6px;padding-top:10px;font-size:16px;font-weight:700}'
-      + '.note{margin-top:28px;padding-top:14px;border-top:1px solid #eee;font-size:12px;color:#555;white-space:pre-wrap}'
-      + '.foot{margin-top:36px;text-align:center;font-size:11px;color:#aaa}'
-      + '@media print{body{padding:0}@page{margin:16mm}}'
-      + '</style></head><body>'
-      + '<div class="top">'
-      +   '<div><div class="ph-name">' + escapeHtml(co.name || 'Rumi') + '</div>' + companyLines + '</div>'
-      +   '<div><div class="inv-title">INVOICE</div>'
-      +     '<div class="inv-meta"><b>#' + orderNo(o) + '</b></div>'
-      +     '<div class="inv-meta">Order date: <b>' + dateStr + '</b></div>'
-      +     '<div class="inv-meta">Issued: ' + escapeHtml(issuedStr) + '</div>'
+      + ':root{--ink:#1b1830;--muted:#6b6880;--line:#e8e6f0;--soft:#f6f4fd;--accent:#7c5cfa;--accent2:#4f8def;--good:#1f9d55;--due:#d97706}'
+      + 'html,body{margin:0;background:#fff}'
+      + 'body{font:12.5px/1.55 Inter,Vazirmatn,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:var(--ink);padding:34px 38px;-webkit-print-color-adjust:exact;print-color-adjust:exact}'
+      + '[dir=auto],.fa{font-family:Vazirmatn,Inter,Tahoma,sans-serif}'
+      + '.sheet{max-width:780px;margin:0 auto}'
+      // header band
+      + '.band{display:flex;justify-content:space-between;align-items:center;gap:20px;padding:22px 24px;border-radius:18px;color:#fff;background:linear-gradient(120deg,var(--accent),var(--accent2))}'
+      + '.brand{display:flex;align-items:center;gap:14px}'
+      + '.mark{width:50px;height:50px;border-radius:15px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);display:grid;place-items:center}'
+      + '.shop{font-size:22px;font-weight:700;letter-spacing:-.01em;line-height:1.2}'
+      + '.site{font-size:12px;opacity:.85;margin-top:2px}'
+      + '.inv{text-align:right}'
+      + '.inv .t{font-size:11px;letter-spacing:.22em;font-weight:600;opacity:.85}'
+      + '.inv .n{font-size:26px;font-weight:700;line-height:1.15}'
+      + '.inv .d{font-size:11.5px;opacity:.9;margin-top:2px}'
+      + '.shopinfo{display:flex;justify-content:space-between;gap:20px;color:var(--muted);font-size:11.5px;padding:10px 6px 0}'
+      // info cards
+      + '.cards{display:grid;grid-template-columns:1.4fr 1fr;gap:14px;margin:20px 0 18px}'
+      + '.card{border:1px solid var(--line);border-radius:14px;padding:14px 16px;background:#fff}'
+      + '.card h4{margin:0 0 8px;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:600}'
+      + '.cust{font-size:16px;font-weight:700;margin-bottom:6px}'
+      + '.ln{display:flex;gap:10px;margin-top:3px}'
+      + '.ln .k{color:var(--muted);min-width:56px;flex:0 0 auto}'
+      + '.ln.addr span:last-child{line-height:1.7}'
+      + '.meta .ln .k{min-width:84px}'
+      + '.pill{display:inline-block;font-size:10.5px;font-weight:600;padding:2px 9px;border-radius:999px;vertical-align:middle}'
+      + '.pill.ok{background:#e6f6ed;color:var(--good)}'
+      + '.pill.due{background:#fdf1e1;color:var(--due)}'
+      + '.pill.muted-pill{background:#f0eff5;color:var(--muted)}'
+      + '.pill.ws{background:#efeaff;color:var(--accent)}'
+      + '.gift-pill{background:#e3f6f2;color:#14907a;margin-inline-start:6px}'
+      // table
+      + 'table{width:100%;border-collapse:separate;border-spacing:0;border:1px solid var(--line);border-radius:14px;overflow:hidden}'
+      + 'thead th{background:var(--soft);text-align:left;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:10px 12px;border-bottom:1px solid var(--line)}'
+      + 'td{padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top}'
+      + 'tbody tr:last-child td{border-bottom:0}'
+      + 'tbody tr:nth-child(even) td{background:#fcfbff}'
+      + '.r{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}.c{text-align:center}'
+      + '.idx{width:34px;color:#a7a4b8}.item{font-weight:500}.item[dir=auto]{text-align:start}'
+      + '.strong{font-weight:600}.muted{color:#a7a4b8}.free{color:#14907a;font-weight:600}'
+      // totals
+      + '.bottom{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;margin-top:18px}'
+      + '.count{color:var(--muted);font-size:11.5px;padding-top:8px}'
+      + '.totals{width:300px;border:1px solid var(--line);border-radius:14px;overflow:hidden}'
+      + '.totals .row{display:flex;justify-content:space-between;padding:8px 14px;font-variant-numeric:tabular-nums}'
+      + '.totals .row+.row{border-top:1px solid var(--line)}'
+      + '.totals .row span:first-child{color:var(--muted)}'
+      + '.totals .grand{background:var(--ink);color:#fff;padding:12px 14px;font-size:16px;font-weight:700}'
+      + '.totals .grand span:first-child{color:rgba(255,255,255,.75);font-weight:500;font-size:13px}'
+      // thank-you + footer
+      + '.thanks{margin-top:24px;padding:18px 20px;border-radius:16px;background:var(--soft);border:1px solid #ebe5ff;text-align:center;font-family:Vazirmatn,Tahoma,sans-serif}'
+      + '.thanks .h{font-size:16px;font-weight:700;color:var(--accent);margin-bottom:4px}'
+      + '.thanks .p{font-size:13px;color:#46435a;line-height:1.9}'
+      + '.note{margin-top:14px;font-size:11.5px;color:var(--muted);white-space:pre-wrap;text-align:center}'
+      + '.foot{margin-top:22px;padding-top:14px;border-top:1px dashed var(--line);display:flex;justify-content:space-between;align-items:center;gap:16px;font-size:11px;color:var(--muted)}'
+      + '.foot .web{font-size:14px;font-weight:700;color:var(--accent);letter-spacing:.02em;text-decoration:none}'
+      + '@media print{body{padding:0}@page{size:A4;margin:12mm}.band,.thanks,thead th,.totals .grand{break-inside:avoid}}'
+      + '</style></head><body><div class="sheet">'
+
+      + '<div class="band">'
+      +   '<div class="brand"><div class="mark">' + paw + '</div><div>'
+      +     '<div class="shop">' + escapeHtml(shop) + '</div><div class="site">' + SHOP_SITE + '</div>'
+      +   '</div></div>'
+      +   '<div class="inv"><div class="t">INVOICE</div><div class="n">#' + orderNo(o) + '</div><div class="d">' + dateJ + (dateG ? ' · ' + dateG : '') + '</div></div>'
+      + '</div>'
+      + (shopLines ? '<div class="shopinfo"><div>' + shopLines + '</div></div>' : '')
+
+      + '<div class="cards">'
+      +   '<div class="card"><h4>Billed to</h4><div class="cust" dir="auto">' + escapeHtml(o.customerName || '—') + '</div>' + billLines + '</div>'
+      +   '<div class="card meta"><h4>Order details</h4>'
+      +     '<div class="ln"><span class="k">Order date</span><span>' + dateJ + '</span></div>'
+      +     (dateG ? '<div class="ln"><span class="k">Gregorian</span><span>' + dateG + '</span></div>' : '')
+      +     '<div class="ln"><span class="k">Issued</span><span>' + escapeHtml(issued) + '</span></div>'
+      +     '<div class="ln"><span class="k">Payment</span><span>' + payPill + '</span></div>'
+      +     '<div class="ln"><span class="k">Delivery</span><span>' + shipPill + (o.isWholesale ? ' <span class="pill ws">Wholesale</span>' : '') + '</span></div>'
       +   '</div>'
       + '</div>'
-      + '<div class="parties">'
-      +   '<div><div class="label">Bill to</div><div class="bill-name">' + escapeHtml(o.customerName || '—') + wholesaleBadge + '</div>' + billLines + '</div>'
+
+      + '<table><thead><tr><th class="c">#</th><th>Item</th><th class="r">Qty</th><th class="r">Unit price</th><th class="r">Amount</th></tr></thead>'
+      + '<tbody>' + rows + '</tbody></table>'
+
+      + '<div class="bottom">'
+      +   '<div class="count">' + units + ' item' + (units === 1 ? '' : 's') + (gifts.length ? ' · includes a gift for you 🎁' : '') + '</div>'
+      +   '<div class="totals">'
+      +     '<div class="row"><span>Subtotal</span><span>' + escapeHtml(fmtMoney(itemsSubtotal)) + '</span></div>'
+      +     (shipping ? '<div class="row"><span>Shipping</span><span>' + escapeHtml(fmtMoney(shipping)) + '</span></div>' : '')
+      +     (discount ? '<div class="row"><span>Discount</span><span>−' + escapeHtml(fmtMoney(discount)) + '</span></div>' : '')
+      +     '<div class="row grand"><span>Total</span><span>' + escapeHtml(fmtMoney(total)) + '</span></div>'
+      +   '</div>'
       + '</div>'
-      + '<table><thead><tr>'
-      +   '<th class="c">#</th><th>Item</th><th class="r">Qty</th><th class="r">Unit price</th><th class="r">Amount</th>'
-      + '</tr></thead><tbody>' + (rows || '<tr><td colspan="5" style="text-align:center;color:#999;padding:18px">No items</td></tr>') + '</tbody></table>'
-      + '<div class="totals">'
-      +   '<div class="row"><span>Subtotal</span><span>' + escapeHtml(fmtMoney(itemsSubtotal)) + '</span></div>'
-      +   (shipping ? '<div class="row"><span>Shipping</span><span>' + escapeHtml(fmtMoney(shipping)) + '</span></div>' : '')
-      +   (discount ? '<div class="row"><span>Discount</span><span>−' + escapeHtml(fmtMoney(discount)) + '</span></div>' : '')
-      +   '<div class="row grand"><span>Total</span><span>' + escapeHtml(fmtMoney(total)) + '</span></div>'
+
+      + '<div class="thanks" dir="rtl">'
+      +   '<div class="h">ممنونیم که برای دوست پشمالوی‌تان به ما اعتماد کردید 🐾</div>'
+      +   '<div class="p">امیدواریم این بسته کلی دُم‌تکان‌دادن و خُرخُرِ شادی به خانه‌تان بیاورد!<br>'
+      +   'اگر سؤالی داشتید یا راهنمایی خواستید، با کمال میل کنارتان هستیم.</div>'
       + '</div>'
       + note
-      + '<div class="foot">Thank you for your business.</div>'
-      + '</body></html>';
+
+      + '<div class="foot">'
+      +   '<span>' + escapeHtml(shop) + (co.phone ? ' · <span dir="ltr">' + escapeHtml(co.phone) + '</span>' : '') + '</span>'
+      +   '<a class="web" href="https://' + SHOP_SITE + '">' + SHOP_SITE + '</a>'
+      + '</div>'
+      + '</div></body></html>';
   }
 
-  // Renders the invoice into a hidden iframe and triggers the print dialog.
+  // Renders the invoice into a hidden iframe and triggers the print dialog
+  // (after the fonts have loaded, so the Persian text prints in Vazirmatn).
   function printInvoice(o) {
     var frame = el('iframe', { style: 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;' });
     document.body.appendChild(frame);
-    var doc = frame.contentWindow.document;
+    var win = frame.contentWindow, doc = win.document;
+    var done = false, printed = false;
+    // Wait for the font stylesheet, then for the fonts themselves.
+    frame.addEventListener('load', function () {
+      (doc.fonts && doc.fonts.ready ? doc.fonts.ready : Promise.resolve()).then(function () { setTimeout(go, 150); });
+    });
     doc.open();
     doc.write(buildInvoiceHtml(o));
     doc.close();
-    var done = false;
     function cleanup() { if (done) return; done = true; setTimeout(function () { frame.remove(); }, 500); }
-    frame.contentWindow.onafterprint = cleanup;
-    // Give the iframe a tick to lay out before printing.
-    setTimeout(function () {
-      try { frame.contentWindow.focus(); frame.contentWindow.print(); }
+    function go() {
+      if (printed) return; printed = true;
+      try { win.focus(); win.print(); }
       catch (e) { toast('Could not open print dialog', 'error'); }
-      // Fallback cleanup in case onafterprint never fires (some browsers).
-      setTimeout(cleanup, 60000);
-    }, 120);
+      setTimeout(cleanup, 60000); // fallback in case onafterprint never fires
+    }
+    win.onafterprint = cleanup;
+    setTimeout(go, 3000); // offline: don't wait for web fonts forever
   }
 
   // ====== Calendar ======

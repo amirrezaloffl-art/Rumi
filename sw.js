@@ -20,7 +20,18 @@ var ASSETS = [
   './icon-maskable-512.png',
   './apple-touch-icon.png',
   './icon.svg',
-  './fonts/Barbra-High.ttf'
+  './fonts/Barbra-High.ttf',
+  './fonts/inter-latin-400-normal.woff2',
+  './fonts/inter-latin-500-normal.woff2',
+  './fonts/inter-latin-600-normal.woff2',
+  './fonts/inter-latin-700-normal.woff2',
+  './fonts/vazirmatn-arabic-400-normal.woff2',
+  './fonts/vazirmatn-arabic-500-normal.woff2',
+  './fonts/vazirmatn-arabic-700-normal.woff2',
+  './fonts/vazirmatn-latin-400-normal.woff2',
+  './fonts/vazirmatn-latin-500-normal.woff2',
+  './fonts/vazirmatn-latin-700-normal.woff2',
+  './fonts/fonts.css'
 ];
 
 self.addEventListener('install', function (e) {
