@@ -136,6 +136,97 @@
     var neg = n < 0, parts = String(Math.abs(n)).split('.');
     inp.value = (neg ? '-' : '') + groupThousands(parts[0]) + (parts[1] ? '.' + parts[1] : '');
   }
+  // ====== Search ======
+  // One search used everywhere (catalog, order lines, customers, orders, contacts):
+  //  - every word of the query must appear, in any order («مرغ ویسکاس» = «ویسکاس … مرغ»);
+  //  - spelling differences are ignored: ۸۵/85, ي/ی, ك/ک, half-space vs space, diacritics, case;
+  //  - a word can be the start of a longer word («ویس» finds «ویسکاس»);
+  //  - one small typo is forgiven in longer words («ویکساس», «royl»).
+  function normText(s) {
+    return toEnglishDigits(String(s == null ? '' : s)).toLowerCase()
+      .replace(/[\u064A\u0649]/g, '\u06CC').replace(/\u0643/g, '\u06A9').replace(/\u0629/g, '\u0647')
+      .replace(/[\u0622\u0623\u0625]/g, '\u0627')                    // آ أ إ -> ا
+      .replace(/[\u064B-\u065F\u0670\u0640]/g, '')                   // diacritics, هٔ, tatweel
+      .replace(/[\u200B-\u200F\u2066-\u2069\u00A0]/g, ' ')           // half-space / direction marks -> space
+      .replace(/[()\[\]{}«»"'`،,;:!?\/\\|+*_\-–—]+/g, ' ')            // punctuation -> space
+      .replace(/\s+/g, ' ').trim();
+  }
+  // Typo distance (insert / delete / replace / swap two neighbours = 1 each), with early exit.
+  function editDistanceAtMost(a, b, max) {
+    if (Math.abs(a.length - b.length) > max) return false;
+    var pp = null, prev = [], cur, i, j;
+    for (j = 0; j <= b.length; j++) prev[j] = j;
+    for (i = 1; i <= a.length; i++) {
+      cur = [i]; var rowMin = i;
+      for (j = 1; j <= b.length; j++) {
+        var cost = a.charAt(i - 1) === b.charAt(j - 1) ? 0 : 1;
+        cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+        if (pp && i > 1 && j > 1 && a.charAt(i - 1) === b.charAt(j - 2) && a.charAt(i - 2) === b.charAt(j - 1)) cur[j] = Math.min(cur[j], pp[j - 2] + 1);
+        if (cur[j] < rowMin) rowMin = cur[j];
+      }
+      if (rowMin > max) return false;
+      pp = prev; prev = cur;
+    }
+    return prev[b.length] <= max;
+  }
+  // Returns a function text -> score (0 = no match). An empty query matches everything.
+  function makeMatcher(query) {
+    var q = normText(query);
+    var tokens = q ? q.split(' ') : [];
+    if (!tokens.length) return function () { return 1; };
+    return function (text) {
+      var hay = normText(text);
+      if (!hay) return 0;
+      var joined = hay.replace(/ /g, '');
+      var words = hay.split(' ');
+      var score = 0;
+      for (var i = 0; i < tokens.length; i++) {
+        var t = tokens[i], best = 0;
+        for (var w = 0; w < words.length && best < 3; w++) {
+          if (words[w] === t) best = 3;
+          else if (best < 2 && words[w].indexOf(t) === 0) best = 2;
+        }
+        if (!best && (hay.indexOf(t) !== -1 || joined.indexOf(t) !== -1)) best = 1;
+        if (!best && t.length >= 4) {                       // forgive one typo (two in long words)
+          var max = t.length >= 8 ? 2 : 1;
+          for (var v = 0; v < words.length; v++) {
+            var wd = words[v];
+            if (editDistanceAtMost(t, wd, max) || (wd.length > t.length && editDistanceAtMost(t, wd.slice(0, t.length), max))) { best = 0.5; break; }
+          }
+        }
+        if (!best) return 0;
+        score += best;
+      }
+      if (hay.indexOf(q) !== -1) score += 2;               // the words in the same order
+      if (hay.indexOf(tokens[0]) === 0) score += 1;        // starts with the first word
+      return score;
+    };
+  }
+  // Filter + rank a list. getText(item) returns everything searchable about the item.
+  function searchList(list, query, getText, limit) {
+    var match = makeMatcher(query);
+    var out = [];
+    list.forEach(function (item, i) { var sc = match(getText(item)); if (sc > 0) out.push({ item: item, sc: sc, i: i }); });
+    if (normText(query)) out.sort(function (a, b) { return b.sc - a.sc || a.i - b.i; });
+    out = out.map(function (x) { return x.item; });
+    return limit ? out.slice(0, limit) : out;
+  }
+
+  function phoneVariants(p) {
+    var n = normalizePhone(p);
+    return n ? [n, n.replace(/^0/, ''), '+98' + n.replace(/^0/, '')].join(' ') : '';
+  }
+  function contactSearchText(c) {
+    return [c.name, c.phone1, c.phone2, phoneVariants(c.phone1), phoneVariants(c.phone2), c.email, c.address, c.petName, c.petBreed, c.notes].filter(Boolean).join(' ');
+  }
+  function orderSearchText(o) {
+    var src = sourceInfo(o.source);
+    return ['#' + orderNo(o), String(orderNo(o)), o.customerName, o.phone1, o.phone2, phoneVariants(o.phone1), o.address, o.email, src ? src.label : '']
+      .concat((o.products || []).map(function (l) { return l.name; }))
+      .concat((o.gifts || []).map(function (l) { return l.name; }))
+      .filter(Boolean).join(' ');
+  }
+
   // Sequential order number shown to the user (#12). Internal ids are long and unique per device.
   function orderNo(o) { return o && o.no != null ? o.no : (o ? o.id : ''); }
 
@@ -893,7 +984,7 @@
 
     // Filters
     var filt = el('div', { class: 'filters' });
-    var search = el('input', { type: 'text', placeholder: 'Search customer / product…', id: 'flt_search' });
+    var search = el('input', { type: 'text', placeholder: 'Search customer, product, phone, #order…', id: 'flt_search', dir: 'auto' });
     var pet    = el('select', { id: 'flt_pet' }, [
       el('option', { value: '' }, 'All pets'),
       el('option', { value: 'dog' }, 'Dogs'),
@@ -937,7 +1028,7 @@
     root.appendChild(listHost);
 
     function paint() {
-      var q = search.value.trim().toLowerCase();
+      var matchO = makeMatcher(search.value);
       var pv = pet.value, wv = whole.value, sv = status.value, sm = sort.value, srcv = source.value;
       state.ordersStatus = sv; state.ordersSort = sm; state.ordersSource = srcv;
       var rows = state.cache.orders.filter(function (o) {
@@ -949,11 +1040,7 @@
         if (sv === 'paid'    && !o.paid)    return false;
         if (sv === 'sent'    && !o.shipped) return false;
         if (srcv === 'none' ? !!sourceInfo(o.source) : (srcv && o.source !== srcv)) return false;
-        if (q) {
-          var hay = (o.customerName || '').toLowerCase();
-          (o.products || []).forEach(function (l) { hay += ' ' + (l.name || '').toLowerCase(); });
-          if (hay.indexOf(q) === -1) return false;
-        }
+        if (!matchO(orderSearchText(o))) return false;
         return true;
       });
       rows = sortOrders(rows, sm);
@@ -2864,11 +2951,8 @@
         listHost.appendChild(el('div', { class: 'card empty' }, 'No products yet. Click "+ Add product", or they are saved automatically the first time you enter them in an order.'));
         return;
       }
-      var q = searchInput.value.trim().toLowerCase();
-      var qk = DB.productKey(q);
-      var rows = sortProducts(products.filter(function (p) {
-        return !q || (p.nameLower || (p.name || '').toLowerCase()).indexOf(q) !== -1 || (qk && DB.productKey(p.name).indexOf(qk) !== -1);
-      }), state.catalogSort, sales);
+      var matchP = makeMatcher(searchInput.value);
+      var rows = sortProducts(products.filter(function (p) { return matchP(p.name) > 0; }), state.catalogSort, sales);
       if (rows.length === 0) {
         listHost.appendChild(el('div', { class: 'card empty' }, 'No products match “' + searchInput.value.trim() + '”.'));
         return;
@@ -2980,16 +3064,13 @@
     root.appendChild(listHost);
 
     function computeRows() {
-      var q = searchInput.value.trim().toLowerCase();
+      var matchC = makeMatcher(searchInput.value);
       var tf = typeSel.value;
       var rows = custs.filter(function (c) {
         var s = stat(c);
         if (tf === 'buyers' && s.count === 0) return false;
         if (tf === 'leads' && s.count > 0) return false;
-        if (q) {
-          var hay = ((c.name || '') + ' ' + (c.phone1 || '') + ' ' + (c.phone2 || '') + ' ' + (c.email || '') + ' ' + (c.petName || '') + ' ' + (c.petBreed || '')).toLowerCase();
-          if (hay.indexOf(q) === -1) return false;
-        }
+        if (!matchC(contactSearchText(c))) return false;
         return true;
       });
       var sm = sortSel.value;
@@ -3770,11 +3851,8 @@
     ta.addEventListener('keydown', function (e) { if (e.key === 'Enter') e.preventDefault(); }); // names are one line
     ta._grow = grow;
     attachSuggest(ta, function (q) {
-      q = q.trim().toLowerCase();
-      if (!q) return [];
-      var qk = DB.productKey(q);
-      return state.cache.products.filter(function (p) { return (p.nameLower || '').indexOf(q) !== -1 || (qk && DB.productKey(p.name).indexOf(qk) !== -1); })
-        .slice(0, 8).map(function (p) { return { label: p.name, sub: fmtMoney(p.defaultSell) + ' · stock ' + (num(p.stock) || 0), value: p.name }; });
+      if (!normText(q)) return [];
+      return searchList(state.cache.products, q, function (p) { return p.name; }, 8).map(function (p) { return { label: p.name, sub: fmtMoney(p.defaultSell) + ' · stock ' + (num(p.stock) || 0), value: p.name }; });
     }, function () { grow(); if (onPick) onPick(); });
     return ta;
   }
@@ -4055,11 +4133,8 @@
     $('#addGiftLine').addEventListener('click', function () { addGiftLine({ name:'', qty:1, costPrice:0 }); recomputeTotals(); focusLast('#giftLines'); });
     // Customer name: suggestions from your contacts (name + phone).
     attachSuggest($('#f_customer'), function (q) {
-      q = q.trim().toLowerCase();
-      if (!q) return [];
-      return state.cache.customers.filter(function (c) {
-        return c.name && ((c.nameLower || '').indexOf(q) !== -1 || String(c.phone1 || '').indexOf(q) !== -1);
-      }).slice(0, 8).map(function (c) { return { label: c.name, sub: [c.phone1, c.address].filter(Boolean).join(' · '), value: c.name }; });
+      if (!normText(q)) return [];
+      return searchList(state.cache.customers.filter(function (c) { return c.name; }), q, contactSearchText, 8).map(function (c) { return { label: c.name, sub: [c.phone1, c.address].filter(Boolean).join(' · '), value: c.name }; });
     });
     $('#f_address').addEventListener('input', growAddress);
     $('#f_shipping').addEventListener('input', recomputeTotals);
