@@ -2541,6 +2541,8 @@
       if (!name) { toast('Product name is required', 'error'); nameInput.focus(); return; }
       var expIso = parseExpireToIso(expireInput.value);
       if (expIso === null) { toast('Expire date is invalid', 'error'); expireInput.focus(); return; }
+      var twin = state.cache.products.filter(function (x) { return x.id !== p.id && DB.productKey(x.name) === DB.productKey(name); })[0];
+      if (twin) { toast('“' + twin.name + '” is already in the catalog', 'error'); nameInput.focus(); return; }
       var target = num(stockInput.value) || 0;
       var data = {
         name: name, nameLower: name.toLowerCase(),
@@ -2742,6 +2744,30 @@
       statCard('Warehouse value', fmtMoney(costValue), 'Retail value: ' + fmtMoney(retailValue), 'accent')
     ]));
 
+    // ---- Same product entered twice (different spelling / digits) ----
+    var dupGroups = DB.findDuplicateProducts(products);
+    if (dupGroups.length) {
+      var extra = dupGroups.reduce(function (s, g) { return s + g.length - 1; }, 0);
+      var list = el('div', { class: 'dup-list' }, dupGroups.slice(0, 6).map(function (g) {
+        return el('div', { class: 'dup-row', dir: 'auto' }, g.map(function (p) { return p.name; }).join('  =  '));
+      }));
+      if (dupGroups.length > 6) list.appendChild(el('div', { class: 'dup-row' }, '… and ' + (dupGroups.length - 6) + ' more'));
+      root.appendChild(el('div', { class: 'alert warn' }, [
+        el('span', { class: 'alert-icon', 'aria-hidden': 'true' }, '⧉'),
+        el('div', { class: 'alert-body' }, [
+          el('div', { class: 'alert-title' }, extra + ' product' + (extra === 1 ? ' is' : 's are') + ' in the catalog twice'),
+          el('div', { class: 'alert-msg' }, 'Same item, spelled differently (for example ۱۰۰ / 100 or a half-space). Merging keeps one entry with the latest prices and moves all sales and stock to it.'),
+          list
+        ]),
+        el('button', { class: 'btn primary sm', on: { click: function () {
+          confirm('Merge duplicate products?', 'Each group becomes one product. Sales history and stock are combined; nothing is lost.', function () {
+            DB.mergeDuplicateProducts().then(function (n) { toast(n + ' duplicate' + (n === 1 ? '' : 's') + ' merged', 'ok'); renderInPlace(); })
+              .catch(function (err) { toast('Could not merge: ' + err.message, 'error'); });
+          });
+        } } }, 'Merge')
+      ]));
+    }
+
     // ---- Filters: search + sort ----
     var searchInput = el('input', { type: 'text', placeholder: 'Search product…', autocomplete: 'off', dir: 'auto' });
     searchInput.value = state.catalogQuery;
@@ -2779,8 +2805,9 @@
         return;
       }
       var q = searchInput.value.trim().toLowerCase();
+      var qk = DB.productKey(q);
       var rows = sortProducts(products.filter(function (p) {
-        return !q || (p.nameLower || (p.name || '').toLowerCase()).indexOf(q) !== -1;
+        return !q || (p.nameLower || (p.name || '').toLowerCase()).indexOf(q) !== -1 || (qk && DB.productKey(p.name).indexOf(qk) !== -1);
       }), state.catalogSort, sales);
       if (rows.length === 0) {
         listHost.appendChild(el('div', { class: 'card empty' }, 'No products match “' + searchInput.value.trim() + '”.'));
@@ -3683,12 +3710,41 @@
     attachSuggest(ta, function (q) {
       q = q.trim().toLowerCase();
       if (!q) return [];
-      return state.cache.products.filter(function (p) { return (p.nameLower || '').indexOf(q) !== -1; })
+      var qk = DB.productKey(q);
+      return state.cache.products.filter(function (p) { return (p.nameLower || '').indexOf(q) !== -1 || (qk && DB.productKey(p.name).indexOf(qk) !== -1); })
         .slice(0, 8).map(function (p) { return { label: p.name, sub: fmtMoney(p.defaultSell) + ' · stock ' + (num(p.stock) || 0), value: p.name }; });
     }, function () { grow(); if (onPick) onPick(); });
     return ta;
   }
   function growAddress() { var t = $('#f_address'); if (!t.offsetParent) return; t.style.height = 'auto'; t.style.height = Math.max(70, t.scrollHeight + 2) + 'px'; }
+  function catalogProductFor(name, pid) {
+    if (pid != null) {
+      var byId = state.cache.products.find(function (p) { return p.id === pid; });
+      if (byId && DB.productKey(byId.name) === DB.productKey(name)) return byId;
+    }
+    var k = DB.productKey(name);
+    return k ? state.cache.products.find(function (p) { return DB.productKey(p.name) === k; }) || null : null;
+  }
+  // Small note under a line's name: linked to the catalog (and whether the save will
+  // change the catalog price), or a new product that will be added.
+  function lineStatus(statusEl, row, cost, sell) {
+    var name = $('.ol-name', row).value.trim();
+    var prod = name ? catalogProductFor(name, row._pid) : null;
+    row._pid = prod ? prod.id : null;
+    statusEl.className = 'ol-status';
+    if (!name) { statusEl.textContent = ''; return; }
+    if (!prod) { statusEl.classList.add('new'); statusEl.textContent = 'New product — it will be added to the catalog'; return; }
+    var changes = [];
+    var c = num(cost.value), sv = sell ? num(sell.value) : null;
+    var pc = num(prod.defaultCost) || 0, ps = num(prod.defaultSell) || 0;
+    var orig = row._orig || {};
+    var costTouched = orig.cost == null || orig.cost !== c;
+    var sellTouched = sell && (orig.sell == null || orig.sell !== sv);
+    if (costTouched && c !== pc) changes.push('cost ' + fmtMoney(pc) + ' → ' + fmtMoney(c));
+    if (sellTouched && sv !== ps) changes.push('sell ' + fmtMoney(ps) + ' → ' + fmtMoney(sv));
+    if (changes.length) { statusEl.classList.add('upd'); statusEl.textContent = 'Saving updates the catalog price: ' + changes.join(' · '); }
+    else statusEl.textContent = 'From the catalog · stock ' + (num(prod.stock) || 0);
+  }
   function growAll(root) { $$('.ol-name', root).forEach(function (t) { if (t._grow) t._grow(); }); }
   function numField(label, value, cls) {
     var inp = el('input', { type: 'text', inputmode: 'decimal', 'data-num': '1', class: cls, value: value });
@@ -3701,13 +3757,21 @@
     var cost = numField('Cost / unit', line.costPrice || 0, 'ol-cost');
     var sell = numField('Sell / unit', line.sellPrice || 0, 'ol-sell');
     var name = lineNameField(line.name, 'Product name', null);
+    var status = el('div', { class: 'ol-status', dir: 'auto' });
+    row._pid = line.productId != null ? line.productId : null;
+    if (line.name) row._orig = { cost: num(line.costPrice) || 0, sell: num(line.sellPrice) || 0 };
     var prof = el('strong', { class: 'ol-profit' }, '0');
     var del = el('button', { type: 'button', class: 'ol-del', title: 'Remove', 'aria-label': 'Remove product', html: '<svg class="ico"><use href="#i-close"/></svg>', on: { click: function () { row.remove(); recomputeTotals(); } } });
 
     function fillFromCatalog() {
-      var v = name.value.trim().toLowerCase();
-      var match = state.cache.products.find(function (p) { return p.nameLower === v; });
-      if (match) {
+      var before = row._pid;
+      var match = catalogProductFor(name.value.trim(), row._pid);
+      if (match && match.id !== before) {
+        // Switched to another catalog product: start from its current prices.
+        row._orig = null;
+        cost.input.value = match.defaultCost; formatNumInput(cost.input);
+        sell.input.value = match.defaultSell; formatNumInput(sell.input);
+      } else if (match) {
         if (!num(cost.input.value)) { cost.input.value = match.defaultCost; formatNumInput(cost.input); }
         if (!num(sell.input.value)) { sell.input.value = match.defaultSell; formatNumInput(sell.input); }
       }
@@ -3717,6 +3781,7 @@
     [qty, cost, sell].forEach(function (f) { f.input.addEventListener('input', recomputeTotals); });
 
     row.appendChild(el('div', { class: 'ol-top' }, [name, del]));
+    row.appendChild(status);
     row.appendChild(el('div', { class: 'ol-nums' }, [qty.wrap, cost.wrap, sell.wrap]));
     row.appendChild(el('div', { class: 'ol-foot' }, [el('span', {}, 'Line profit'), prof]));
     $('#productLines').appendChild(row);
@@ -3725,6 +3790,7 @@
       var p = (num(sell.input.value) - num(cost.input.value)) * num(qty.input.value || 0);
       prof.textContent = fmtMoney(p);
       prof.classList.toggle('neg', p < 0);
+      lineStatus(status, row, cost.input, sell.input);
     };
     row._refresh();
     name._grow();
@@ -3732,6 +3798,7 @@
   function readProductLines() {
     return $$('#productLines .order-line').map(function (r) {
       return {
+        productId: r._pid != null ? r._pid : undefined,
         name: $('.ol-name', r).value.trim(),
         qty: num($('.ol-qty', r).value) || 0,
         costPrice: num($('.ol-cost', r).value) || 0,
@@ -3756,19 +3823,26 @@
     var qty = numField('Qty', line.qty || 1, 'ol-qty');
     var cost = numField('Cost / unit', line.costPrice || 0, 'ol-cost');
     var name = lineNameField(line.name, 'Gift item', null);
+    var status = el('div', { class: 'ol-status', dir: 'auto' });
+    row._pid = line.productId != null ? line.productId : null;
+    if (line.name) row._orig = { cost: num(line.costPrice) || 0 };
     var costOut = el('strong', { class: 'ol-profit neg' }, '0');
     var del = el('button', { type: 'button', class: 'ol-del', title: 'Remove', 'aria-label': 'Remove gift', html: '<svg class="ico"><use href="#i-close"/></svg>', on: { click: function () { row.remove(); syncGiftsBlock(); recomputeTotals(); } } });
 
     function fillFromCatalog() {
-      var v = name.value.trim().toLowerCase();
-      var match = state.cache.products.find(function (p) { return p.nameLower === v; });
-      if (match && !num(cost.input.value)) { cost.input.value = match.defaultCost; formatNumInput(cost.input); }
+      var before = row._pid;
+      var match = catalogProductFor(name.value.trim(), row._pid);
+      if (match && (match.id !== before || !num(cost.input.value))) {
+        if (match.id !== before) row._orig = null;
+        cost.input.value = match.defaultCost; formatNumInput(cost.input);
+      }
       recomputeTotals();
     }
     name.addEventListener('input', fillFromCatalog);
     [qty, cost].forEach(function (f) { f.input.addEventListener('input', recomputeTotals); });
 
     row.appendChild(el('div', { class: 'ol-top' }, [name, del]));
+    row.appendChild(status);
     row.appendChild(el('div', { class: 'ol-nums two' }, [qty.wrap, cost.wrap]));
     row.appendChild(el('div', { class: 'ol-foot' }, [el('span', {}, 'Cost to you (free for the customer)'), costOut]));
     $('#giftLines').appendChild(row);
@@ -3776,6 +3850,7 @@
     row._refresh = function () {
       var c = num(cost.input.value) * num(qty.input.value || 0);
       costOut.textContent = c ? '−' + fmtMoney(c) : fmtMoney(0);
+      lineStatus(status, row, cost.input, null);
     };
     row._refresh();
     name._grow();
@@ -3784,6 +3859,7 @@
   function readGiftLines() {
     return $$('#giftLines .order-line').map(function (r) {
       return {
+        productId: r._pid != null ? r._pid : undefined,
         name: $('.ol-name', r).value.trim(),
         qty: num($('.ol-qty', r).value) || 0,
         costPrice: num($('.ol-cost', r).value) || 0
@@ -3954,6 +4030,9 @@
       var t = e.target;
       if (!t || (t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA')) return;
       if (t.type === 'number') return; // native number inputs already restrict digits
+      // Names keep their digits exactly as typed («۱۰۰ گرمی»); rewriting them made a
+      // catalog product look like a new one.
+      if (t.classList.contains('ol-name') || t.classList.contains('cat-name-input') || t.id === 'f_customer' || t.id === 'c_name') return;
       var v = t.value;
       var nv = toEnglishDigits(v);
       if (nv !== v) {

@@ -37,7 +37,8 @@ var ASSETS = [
 self.addEventListener('install', function (e) {
   e.waitUntil(
     caches.open(CACHE)
-      .then(function (c) { return c.addAll(ASSETS); })
+      // cache: 'reload' skips the browser's HTTP cache, so a new version never stores old files
+      .then(function (c) { return c.addAll(ASSETS.map(function (u) { return new Request(u, { cache: 'reload' }); })); })
       .then(function () { return self.skipWaiting(); })
   );
 });
@@ -65,7 +66,12 @@ self.addEventListener('fetch', function (e) {
   // (offline, or the network takes longer than 3 s).
   e.respondWith(
     caches.open(CACHE).then(function (cache) {
-      var network = fetch(req).then(function (res) {
+      // 'no-cache' = always ask the server whether the file changed (cheap 304 if not),
+      // instead of trusting the browser's 10-minute HTTP cache from GitHub Pages.
+      var netReq = !sameOrigin ? req
+        : req.mode === 'navigate' ? new Request(req.url, { cache: 'no-cache', credentials: 'same-origin' }) // page loads can't be copied with options
+        : new Request(req, { cache: 'no-cache' });
+      var network = fetch(netReq).then(function (res) {
         if (res && (res.status === 200 || res.type === 'opaque')) cache.put(req, res.clone());
         return res;
       });

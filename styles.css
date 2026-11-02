@@ -980,3 +980,12 @@ body.locked .tabbar, body.locked .sidebar, body.locked .main { visibility: hidde
   .stmt-amt, .stmt-amt.neg, .stmt-row.total .stmt-amt { color: #000 !important; }
   .stmt-row.total { background: none; }
 }
+
+/* order line: catalog link / price-update note */
+.ol-status { font-size: 11.5px; color: var(--muted); padding: 0 4px; margin-top: -2px; overflow-wrap: anywhere; }
+.ol-status:empty { display: none; }
+.ol-status.new { color: rgb(var(--warn-rgb)); font-weight: 600; }
+.ol-status.upd { color: rgb(var(--accent-rgb)); font-weight: 600; }
+/* catalog duplicate notice */
+.dup-list { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.dup-row { font-size: 12.5px; padding: 6px 10px; border-radius: 10px; background: var(--glass-bg-thin); overflow-wrap: anywhere; }

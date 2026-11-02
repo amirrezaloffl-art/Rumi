@@ -178,6 +178,20 @@
   // ==== Orders ====
   function nameKey(s) { return String(s || '').trim().toLowerCase(); }
 
+  // Product identity ignores how a name was typed: Persian/Arabic/Latin digits,
+  // Arabic ي/ك vs Persian ی/ک, half-spaces (ZWNJ), spaces, diacritics and case.
+  // «تشویقی ۱۰۰ گرمی» and «تشویقی 100 گرمی» are the same product.
+  function productKey(s) {
+    return String(s || '').toLowerCase()
+      .replace(/[\u06F0-\u06F9]/g, function (d) { return String(d.charCodeAt(0) - 0x06F0); })
+      .replace(/[\u0660-\u0669]/g, function (d) { return String(d.charCodeAt(0) - 0x0660); })
+      .replace(/[\u064A\u0649]/g, '\u06CC')          // ي ى -> ی
+      .replace(/\u0643/g, '\u06A9')                   // ك -> ک
+      .replace(/\u0629/g, '\u0647')                   // ة -> ه
+      .replace(/[\u064B-\u065F\u0670\u0640]/g, '')    // diacritics, hamza above (هٔ), tatweel
+      .replace(/[\s\u200B-\u200F\u00A0\u2066-\u2069_\-]+/g, ''); // spaces, ZWNJ, direction marks
+  }
+
   // One transaction: upsert customer + products, assign order number, compute profit, save.
   function saveOrder(order) {
     writeSeq++;
@@ -210,19 +224,41 @@
         }
         order.customerId = cust.id;
 
-        // 2) products — keep the latest prices as catalog defaults; new names join the catalog.
-        // Gift lines carry no sellPrice, so they never overwrite a product's default sell price.
-        stockLines(order).forEach(function (line) {
-          var k = nameKey(line.name);
-          var p = products.filter(function (x) { return x.nameLower === k && !x.archived; })[0];
+        // 2) products. A line is the catalog product it was picked from (productId), or
+        //    the product whose name matches once spelling differences are ignored.
+        //    Only a genuinely new name adds a product to the catalog.
+        //    A price you change on a line becomes the catalog price; saving an old order
+        //    without touching its prices leaves today's catalog prices alone.
+        //    Gift lines carry no sellPrice, so they never change a product's sell price.
+        var prevOrder = order.id != null ? orders.filter(function (o) { return o.id === order.id; })[0] : null;
+        var prevLines = {};
+        if (prevOrder) {
+          (prevOrder.products || []).forEach(function (l) { if (l.productId != null) prevLines['p' + l.productId] = l; });
+          (prevOrder.gifts || []).forEach(function (l) { if (l.productId != null && !prevLines['g' + l.productId]) prevLines['g' + l.productId] = l; });
+        }
+        function findProduct(line) {
+          var p = null;
+          if (line.productId != null) p = products.filter(function (x) { return x.id === line.productId && !x.archived; })[0] || null;
+          if (!p) {
+            var key = productKey(line.name);
+            if (key) p = products.filter(function (x) { return !x.archived && productKey(x.name) === key; })[0] || null;
+          }
+          return p;
+        }
+        function applyLine(line, isGift) {
+          var p = findProduct(line);
           if (p) {
+            var prev = prevLines[(isGift ? 'g' : 'p') + p.id];
             var ch = false;
-            if (Number.isFinite(line.costPrice) && p.defaultCost !== line.costPrice) { p.defaultCost = line.costPrice; ch = true; }
-            if (Number.isFinite(line.sellPrice) && p.defaultSell !== line.sellPrice) { p.defaultSell = line.sellPrice; ch = true; }
+            var costChanged = !prev || Number(prev.costPrice) !== Number(line.costPrice);
+            var sellChanged = !isGift && (!prev || Number(prev.sellPrice) !== Number(line.sellPrice));
+            if (costChanged && Number.isFinite(line.costPrice) && p.defaultCost !== line.costPrice) { p.defaultCost = line.costPrice; ch = true; }
+            if (sellChanged && Number.isFinite(line.sellPrice) && p.defaultSell !== line.sellPrice) { p.defaultSell = line.sellPrice; ch = true; }
             if (ch) { p.updatedAt = t0; delete p.stock; ps.put(p); }
+            line.name = p.name; // one spelling everywhere (invoice, reports)
           } else {
             p = {
-              id: newId(), name: String(line.name || '').trim(), nameLower: k,
+              id: newId(), name: String(line.name || '').trim(), nameLower: nameKey(line.name),
               defaultCost: Number.isFinite(line.costPrice) ? line.costPrice : 0,
               defaultSell: Number.isFinite(line.sellPrice) ? line.sellPrice : 0,
               createdAt: t0, updatedAt: t0
@@ -231,7 +267,9 @@
             products.push(p);
           }
           line.productId = p.id;
-        });
+        }
+        (order.products || []).forEach(function (l) { applyLine(l, false); });
+        (order.gifts || []).forEach(function (l) { applyLine(l, true); });
 
         // 3) profit (shipping excluded), order number, stamps
         order.profit = orderProfitOf(order);
@@ -283,6 +321,64 @@
     });
   }
   function deleteOrder(id) { return del('orders', id); }
+
+  // ==== Duplicate products ====
+  // Groups of active products whose names are the same once spelling is ignored.
+  function findDuplicateProducts(products) {
+    var groups = {};
+    (products || []).forEach(function (p) {
+      if (p.archived) return;
+      var k = productKey(p.name);
+      if (k) (groups[k] = groups[k] || []).push(p);
+    });
+    return Object.keys(groups).map(function (k) { return groups[k]; }).filter(function (g) { return g.length > 1; });
+  }
+  // Merge each group into its oldest product: orders and stock moves are pointed at it
+  // (so sales history and stock add up), it takes the most recently used prices, and the
+  // extra entries are removed (with tombstones, so synced devices drop them too).
+  function mergeDuplicateProducts() {
+    writeSeq++;
+    var t0 = nowIso(), merged = 0;
+    return open().then(function (db) {
+      var t = db.transaction(['products', 'orders', 'stockMoves', 'meta'], 'readwrite');
+      var done = txDone(t);
+      var ps = t.objectStore('products'), os = t.objectStore('orders'), ms = t.objectStore('stockMoves'), meta = t.objectStore('meta');
+      return Promise.all([reqToPromise(ps.getAll()), reqToPromise(os.getAll()), reqToPromise(ms.getAll()), reqToPromise(meta.get('tombstones'))]).then(function (rs) {
+        var groups = findDuplicateProducts(rs[0]);
+        var tomb = (rs[3] && rs[3].value) || {};
+        var to = {}; // duplicate id -> kept product
+        groups.forEach(function (g) {
+          g.sort(function (a, b) { return String(a.createdAt || '').localeCompare(String(b.createdAt || '')) || a.id - b.id; });
+          var keep = g[0];
+          var latest = g.slice().sort(function (a, b) { return String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')); })[0];
+          keep.defaultCost = latest.defaultCost; keep.defaultSell = latest.defaultSell;
+          g.slice(1).forEach(function (d) {
+            if (!keep.expireDate && d.expireDate) keep.expireDate = d.expireDate;
+            to[d.id] = keep;
+            ps.delete(d.id);
+            (tomb.products = tomb.products || {})[d.id] = t0;
+            merged++;
+          });
+          keep.updatedAt = t0; delete keep.stock;
+          ps.put(keep);
+        });
+        rs[1].forEach(function (o) {
+          var ch = false;
+          stockLines(o).forEach(function (l) {
+            var k = l.productId != null && to[l.productId];
+            if (k) { l.productId = k.id; l.name = k.name; ch = true; }
+          });
+          if (ch) { o.updatedAt = t0; os.put(o); }
+        });
+        rs[2].forEach(function (m) {
+          var k = to[m.productId];
+          if (k) { m.productId = k.id; m.updatedAt = t0; ms.put(m); }
+        });
+        meta.put({ key: 'tombstones', value: tomb });
+        return done;
+      });
+    }).then(function () { if (merged) emitChange('products'); return merged; });
+  }
 
   // ==== Meta ====
   function getMetaRec(key) { return get('meta', key); }
@@ -469,6 +565,9 @@
     archiveOrder: archiveOrder,
     restoreOrder: restoreOrder,
     computeStock: computeStock,
+    productKey: productKey,
+    findDuplicateProducts: findDuplicateProducts,
+    mergeDuplicateProducts: mergeDuplicateProducts,
     adjustStock: adjustStock,
     getMeta: getMeta,
     getMetaRec: getMetaRec,
