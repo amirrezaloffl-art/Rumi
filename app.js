@@ -22,6 +22,16 @@
     fundingSources: ['Owner contribution', 'Loan', 'Other']
   };
 
+  // Where an order came from (shown on the order form, cards, filters and the Profits page).
+  var SOURCES = [
+    { key: 'website',   label: 'Website',            icon: '🌐', color: 'var(--cat-3)' },
+    { key: 'instagram', label: 'Instagram',          icon: '📸', color: 'rgb(var(--protein-rgb))' },
+    { key: 'messenger', label: 'WhatsApp / Telegram', icon: '💬', color: 'rgb(var(--fiber-rgb))' },
+    { key: 'friends',   label: 'Friends and family', icon: '🤝', color: 'rgb(var(--carbs-rgb))' },
+    { key: 'phone',     label: 'Phone call or SMS',  icon: '📞', color: 'var(--cat-1)' }
+  ];
+  function sourceInfo(key) { return SOURCES.filter(function (x) { return x.key === key; })[0] || null; }
+
   var ROUTES = ['dashboard','orders','calendar','profits','expenses','reports','catalog','customers','contact','archive','settings'];
 
   // ====== State ======
@@ -37,6 +47,7 @@
     ordersView: 'cards',            // 'cards' | 'list'
     ordersSort: 'recent',           // 'recent' | 'totalDesc' | 'profitDesc'
     ordersStatus: '',               // '' | 'unpaid' | 'notsent' | 'paid' | 'sent'
+    ordersSource: '',               // '' | a SOURCES key | 'none' (orders filter)
     customersSort: 'spentDesc',     // contacts page sort
     customersFilter: 'all',         // 'all' | 'buyers' | 'leads'
     catalogView: 'list',            // 'list' | 'cards'
@@ -228,6 +239,15 @@
   function segSet(id, on) {
     var v = on ? '1' : '0';
     $('#' + id).querySelectorAll('button').forEach(function (b) { b.classList.toggle('active', b.dataset.val === v); });
+  }
+  function setSource(key) {
+    var box = $('#f_source');
+    box.dataset.value = key || '';
+    $$('.chip', box).forEach(function (c) {
+      var on = c.dataset.val === key;
+      c.classList.toggle('active', on);
+      c.setAttribute('aria-checked', on ? 'true' : 'false');
+    });
   }
   function segGet(id) {
     var a = $('#' + id).querySelector('button.active');
@@ -748,8 +768,8 @@
     } else {
       var ml = el('div', { class: 'mini-list' });
       topC.forEach(function (c) {
-        var nameDiv = el('div', { class: 'name', dir: 'auto' });
-        nameDiv.appendChild(document.createTextNode(c.name + ' '));
+        var nameDiv = el('div', { class: 'name' });
+        nameDiv.appendChild(el('bdi', {}, c.name)); nameDiv.appendChild(document.createTextNode(' '));
         nameDiv.appendChild(el('span', { style: 'color:var(--muted);font-size:12px' }, '· ' + c.count + ' order' + (c.count > 1 ? 's' : '')));
         ml.appendChild(el('div', { class: 'row' }, [nameDiv, el('div', { class: 'val' }, fmtMoney(c.total))]));
       });
@@ -902,6 +922,11 @@
     filt.appendChild(pet);
     filt.appendChild(whole);
     filt.appendChild(status);
+    var source = el('select', { id: 'flt_source' }, [el('option', { value: '' }, 'All sources')]
+      .concat(SOURCES.map(function (x) { return el('option', { value: x.key }, x.label); }))
+      .concat([el('option', { value: 'none' }, 'Source not set')]));
+    source.value = state.ordersSource || '';
+    filt.appendChild(source);
     filt.appendChild(el('label', { class: 'flt-sort' }, ['Sort', sort]));
     filt.appendChild(el('div', { class: 'spacer' }));
     root.appendChild(filt);
@@ -913,8 +938,8 @@
 
     function paint() {
       var q = search.value.trim().toLowerCase();
-      var pv = pet.value, wv = whole.value, sv = status.value, sm = sort.value;
-      state.ordersStatus = sv; state.ordersSort = sm;
+      var pv = pet.value, wv = whole.value, sv = status.value, sm = sort.value, srcv = source.value;
+      state.ordersStatus = sv; state.ordersSort = sm; state.ordersSource = srcv;
       var rows = state.cache.orders.filter(function (o) {
         if (pv && o.pet !== pv) return false;
         if (wv === 'yes' && !o.isWholesale) return false;
@@ -923,6 +948,7 @@
         if (sv === 'notsent' && o.shipped)  return false;
         if (sv === 'paid'    && !o.paid)    return false;
         if (sv === 'sent'    && !o.shipped) return false;
+        if (srcv === 'none' ? !!sourceInfo(o.source) : (srcv && o.source !== srcv)) return false;
         if (q) {
           var hay = (o.customerName || '').toLowerCase();
           (o.products || []).forEach(function (l) { hay += ' ' + (l.name || '').toLowerCase(); });
@@ -962,7 +988,7 @@
         listHost.appendChild(orderTable(rows, grouped));
       }
     }
-    [search, pet, whole, status, sort].forEach(function (e) { e.addEventListener('input', paint); e.addEventListener('change', paint); });
+    [search, pet, whole, status, source, sort].forEach(function (e) { e.addEventListener('input', paint); e.addEventListener('change', paint); });
     paint();
   }
 
@@ -1071,6 +1097,8 @@
     if (o.isWholesale) { metaRow.appendChild(document.createTextNode(' ')); metaRow.appendChild(el('span', { class: 'tag wholesale' }, 'WHOLESALE')); }
     if (num(o.loss) > 0) { metaRow.appendChild(document.createTextNode(' ')); metaRow.appendChild(el('span', { class: 'tag loss' }, 'LOSS')); }
     if ((o.gifts || []).length) { metaRow.appendChild(document.createTextNode(' ')); metaRow.appendChild(el('span', { class: 'tag gift' }, 'GIFT')); }
+    var src = sourceInfo(o.source);
+    if (src) { metaRow.appendChild(document.createTextNode(' ')); metaRow.appendChild(el('span', { class: 'tag source', title: 'Order came from ' + src.label }, src.icon + ' ' + src.label)); }
     return card;
   }
 
@@ -1693,6 +1721,10 @@
       drawTrendChart(canvas, orders, state.chartGran);
     }, 0);
 
+    // Where orders come from (all time)
+    root.appendChild(el('h3', { class: 'section-title' }, 'Where orders come from'));
+    root.appendChild(buildSourcesCard(orders));
+
     // Top customers / products
     root.appendChild(el('h3', { class: 'section-title' }, 'Highlights'));
     var twoCols = el('div', { class: 'cards grid-2' });
@@ -1706,7 +1738,7 @@
       var ml = el('div', { class: 'mini-list' });
       custAgg.slice(0, 7).forEach(function (c) {
         var row = el('div', { class: 'row' }, [
-          el('div', { class: 'name' }, [c.name + ' ', el('span', { style: 'color:var(--muted);font-size:12px' }, '· ' + c.count + ' order' + (c.count > 1 ? 's' : ''))]),
+          el('div', { class: 'name' }, [el('bdi', {}, c.name), ' ', el('span', { style: 'color:var(--muted);font-size:12px' }, '· ' + c.count + ' order' + (c.count > 1 ? 's' : ''))]),
           el('div', { class: 'val' }, fmtMoney(c.total))
         ]);
         ml.appendChild(row);
@@ -1725,7 +1757,7 @@
       prodAgg.byProfit.slice(0, 7).forEach(function (p) {
         var pct = p.revenue > 0 ? Math.round(p.profit / p.revenue * 100) : 0;
         ml2.appendChild(el('div', { class: 'row' }, [
-          el('div', { class: 'name' }, [p.name + ' ', el('span', { style: 'color:var(--muted);font-size:12px' }, '· ' + pct + '% margin')]),
+          el('div', { class: 'name' }, [el('bdi', {}, p.name), ' ', el('span', { style: 'color:var(--muted);font-size:12px' }, '· ' + pct + '% margin')]),
           el('div', { class: 'val' }, fmtMoney(p.profit))
         ]));
       });
@@ -1742,7 +1774,7 @@
       var ml3 = el('div', { class: 'mini-list' });
       prodAgg.byQty.slice(0, 7).forEach(function (p) {
         ml3.appendChild(el('div', { class: 'row' }, [
-          el('div', { class: 'name' }, p.name),
+          el('div', { class: 'name', dir: 'auto' }, p.name),
           el('div', { class: 'val' }, p.qty + ' units')
         ]));
       });
@@ -1759,6 +1791,34 @@
       buildLedgerCard('funding',  'External funding', state.cache.funding, fundingTotal, 'var(--good)')
     ]);
     root.appendChild(ledgerGrid);
+  }
+
+  function buildSourcesCard(orders) {
+    var rows = SOURCES.map(function (src) { return { src: src, count: 0, revenue: 0, profit: 0 }; });
+    var none = { src: { key: 'none', label: 'Not set', icon: '·', color: 'var(--track)' }, count: 0, revenue: 0, profit: 0 };
+    orders.forEach(function (o) {
+      var r = rows.filter(function (x) { return x.src.key === o.source; })[0] || none;
+      r.count += 1; r.revenue += orderTotal(o); r.profit += orderProfit(o);
+    });
+    if (none.count) rows.push(none);
+    var maxCount = Math.max.apply(null, rows.map(function (r) { return r.count; }).concat([1]));
+    var total = orders.length || 1;
+    var card = el('div', { class: 'card sources-card' });
+    rows.sort(function (a, b) { return (a.src.key === 'none') - (b.src.key === 'none') || b.count - a.count; }).forEach(function (r) {
+      card.appendChild(el('div', { class: 'src-row' + (r.count ? '' : ' empty-src') }, [
+        el('div', { class: 'src-head' }, [
+          el('span', { class: 'src-name' }, [el('span', { class: 'src-ico', 'aria-hidden': 'true' }, r.src.icon), r.src.label]),
+          el('span', { class: 'src-pct' }, r.count + ' order' + (r.count === 1 ? '' : 's') + ' · ' + Math.round(r.count / total * 100) + '%')
+        ]),
+        el('div', { class: 'src-track' }, el('div', { class: 'src-fill', style: 'width:' + Math.round(r.count / maxCount * 100) + '%;background:' + r.src.color })),
+        el('div', { class: 'src-nums' }, [
+          el('span', {}, 'Revenue ' + fmtMoney(r.revenue)),
+          el('span', { class: r.profit < 0 ? 'neg' : 'pos' }, 'Profit ' + fmtMoney(r.profit))
+        ])
+      ]));
+    });
+    if (none.count) card.appendChild(el('div', { class: 'src-note' }, 'Older orders have no source yet — open an order and choose where it came from.'));
+    return card;
   }
 
   function buildLedgerCard(store, title, entries, total, accent) {
@@ -3649,6 +3709,7 @@
       $('#f_address').value = orderOrNull.address || '';
       segSet('f_paid', !!orderOrNull.paid);
       segSet('f_shipped', !!orderOrNull.shipped);
+      setSource(orderOrNull.source || '');
       buildProductLines(orderOrNull.products || []);
       buildGiftLines(orderOrNull.gifts || []);
     } else {
@@ -3668,6 +3729,7 @@
       $('#f_address').value = '';
       segSet('f_paid', false);   // default: unpaid
       segSet('f_shipped', false); // default: not sent
+      setSource('');
       buildProductLines([{ name: '', qty: 1, costPrice: 0, sellPrice: 0 }]);
       buildGiftLines([]);
     }
@@ -3956,6 +4018,7 @@
       loss: num($('#f_loss').value) || 0,
       paid: segGet('f_paid'),
       shipped: segGet('f_shipped'),
+      source: $('#f_source').dataset.value || '',
       products: products,
       gifts: readGiftLines()
     };
@@ -4004,6 +4067,13 @@
     $('#f_loss').addEventListener('input', recomputeTotals);
     segWire('f_paid');
     segWire('f_shipped');
+    // Order source chips: tap to choose, tap again to clear.
+    var srcBox = $('#f_source');
+    SOURCES.forEach(function (src) {
+      srcBox.appendChild(el('button', { type: 'button', class: 'chip', role: 'radio', 'aria-checked': 'false', data: { val: src.key }, on: { click: function () {
+        setSource(srcBox.dataset.value === src.key ? '' : src.key);
+      } } }, [el('span', { class: 'chip-ico', 'aria-hidden': 'true' }, src.icon), src.label]));
+    });
     $('#customerForm').addEventListener('submit', function (e) { e.preventDefault(); saveCustomerFromForm(); });
     $('#imp_preview').addEventListener('click', previewImportContacts);
     $('#imp_run').addEventListener('click', runImportContacts);

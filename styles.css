@@ -989,3 +989,30 @@ body.locked .tabbar, body.locked .sidebar, body.locked .main { visibility: hidde
 /* catalog duplicate notice */
 .dup-list { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
 .dup-row { font-size: 12.5px; padding: 6px 10px; border-radius: 10px; background: var(--glass-bg-thin); overflow-wrap: anywhere; }
+
+/* order source chips (order form) */
+.chip-group { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 7px 13px; border-radius: 999px; cursor: pointer;
+  font-size: 13.5px; font-weight: 500; color: var(--text);
+  background: var(--glass-bg-thin); border: 1px solid var(--glass-border); box-shadow: var(--glass-edge); transition: background .15s, color .15s, transform .1s;
+}
+.chip:active { transform: scale(.96); }
+.chip .chip-ico { font-size: 15px; line-height: 1; }
+.chip.active { color: #fff; border-color: rgba(255,255,255,.35); background: linear-gradient(180deg, rgb(var(--accent-rgb) / .95), rgb(var(--accent-rgb) / .8)); box-shadow: inset 0 1px 0 rgba(255,255,255,.4), 0 6px 16px rgb(var(--accent-rgb) / .3); }
+.tag.source { background: rgb(var(--water-rgb) / 0.14); color: rgb(var(--water-rgb)); text-transform: none; letter-spacing: 0; }
+
+/* Profits: where orders come from */
+.sources-card { display: flex; flex-direction: column; gap: 14px; }
+.src-row { display: flex; flex-direction: column; gap: 6px; }
+.src-row.empty-src { opacity: .55; }
+.src-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.src-name { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
+.src-ico { font-size: 16px; }
+.src-pct { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.src-track { height: 8px; border-radius: 999px; background: var(--track); overflow: hidden; }
+.src-fill { height: 100%; border-radius: 999px; transition: width .5s ease; }
+.src-nums { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.src-nums .pos { color: rgb(var(--good-rgb)); font-weight: 600; }
+.src-nums .neg { color: rgb(var(--bad-rgb)); font-weight: 600; }
+.src-note { font-size: 12px; color: var(--faint); }
