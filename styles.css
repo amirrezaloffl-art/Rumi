@@ -1016,3 +1016,6 @@ body.locked .tabbar, body.locked .sidebar, body.locked .main { visibility: hidde
 .src-nums .pos { color: rgb(var(--good-rgb)); font-weight: 600; }
 .src-nums .neg { color: rgb(var(--bad-rgb)); font-weight: 600; }
 .src-note { font-size: 12px; color: var(--faint); }
+
+/* order card: Label + Invoice buttons side by side */
+.print-btns { display: inline-flex; gap: 6px; flex-shrink: 0; }

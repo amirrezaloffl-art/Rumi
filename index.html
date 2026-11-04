@@ -139,6 +139,7 @@
     <header class="modal-head">
       <h2 id="orderModalTitle">New Order</h2>
       <div class="head-actions">
+        <button type="button" class="btn sm hidden" id="labelOrderBtn">Post label</button>
         <button type="button" class="btn sm hidden" id="invoiceOrderBtn">Invoice</button>
         <button class="icon-btn" data-close-modal="orderModal" aria-label="Close"><svg class="ico"><use href="#i-close"/></svg></button>
       </div>
@@ -156,7 +157,11 @@
             <label class="field"><span>Phone 2 <em>(optional)</em></span><input type="tel" id="f_phone2" autocomplete="off" /></label>
           </div>
           <label class="field"><span>Address</span><textarea id="f_address" rows="2" dir="auto"></textarea></label>
-          <label class="field"><span>Email <em>(optional)</em></span><input type="email" id="f_email" autocomplete="off" /></label>
+          <div class="grid two keep">
+            <label class="field"><span>Postal code <em>(optional)</em></span><input type="text" id="f_postal" inputmode="numeric" autocomplete="off" maxlength="12" /></label>
+            <label class="field"><span>Email <em>(optional)</em></span><input type="email" id="f_email" autocomplete="off" /></label>
+          </div>
+          <label class="field"><span>Delivery note <em>(printed on the post label)</em></span><input type="text" id="f_deliveryNote" dir="auto" autocomplete="off" placeholder="e.g. call before delivery" /></label>
         </section>
 
         <section class="form-sec">
@@ -325,6 +330,10 @@
       <label class="field">
         <span>Address</span>
         <textarea id="c_address" rows="2"></textarea>
+      </label>
+      <label class="field">
+        <span>Postal code</span>
+        <input type="text" id="c_postal" inputmode="numeric" autocomplete="off" maxlength="12" />
       </label>
 
       <div class="form-divider">Pet details</div>

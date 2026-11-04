@@ -1177,7 +1177,10 @@
       ]),
       el('div', { class: 'order-card-actions' }, [
         statusBadges(o),
-        el('button', { class: 'btn ghost sm', on: { click: function (e) { e.stopPropagation(); printInvoice(o); } } }, 'Invoice')
+        el('span', { class: 'print-btns' }, [
+          el('button', { class: 'btn ghost sm', title: 'Print the post office shipping label', on: { click: function (e) { e.stopPropagation(); printLabel(o); } } }, 'Label'),
+          el('button', { class: 'btn ghost sm', on: { click: function (e) { e.stopPropagation(); printInvoice(o); } } }, 'Invoice')
+        ])
       ])
     ]);
     var metaRow = card.querySelector('.meta');
@@ -1217,6 +1220,7 @@
         el('td', { class: 'num' }, fmtMoney(orderTotal(o))),
         el('td', { class: 'num' + (orderProfit(o) < 0 ? ' neg' : '') }, fmtMoney(orderProfit(o))),
         el('td', { class: 'actions' }, [
+          el('button', { class: 'btn ghost sm', on: { click: function (e) { e.stopPropagation(); printLabel(o); } } }, 'Label'),
           el('button', { class: 'btn ghost sm', on: { click: function (e) { e.stopPropagation(); printInvoice(o); } } }, 'Invoice'),
           el('button', { class: 'btn ghost sm', on: { click: function (e) { e.stopPropagation(); deleteOrder(o); } } }, 'Delete')
         ])
@@ -1262,6 +1266,9 @@
   // (the app's own name) — on paper the shop's name is always used instead.
   var SHOP_NAME = 'Appavet Pet Shop';
   var SHOP_SITE = 'appavet.ir';
+  // Sender details used on post labels when Settings → Business profile leaves them empty.
+  var SHOP_PHONE = '09024089084';
+  var SHOP_ADDRESS = 'تهران، خ شهید مدنی، ک شمیرانی، ک صبوحی، پ ۸';
   function invoiceShopName(co) {
     var n = String((co && co.name) || '').trim();
     return (!n || /^(rumi|appavet)$/i.test(n)) ? SHOP_NAME : n;
@@ -1432,9 +1439,99 @@
       + '</div></body></html>';
   }
 
-  // Renders the invoice into a hidden iframe and triggers the print dialog
+  function printInvoice(o) { printHtml(buildInvoiceHtml(o)); }
+  function printLabel(o) { printHtml(buildLabelHtml(o)); }
+
+  function faDigits(s) { return String(s == null ? '' : s).replace(/[0-9]/g, function (d) { return '۰۱۲۳۴۵۶۷۸۹'.charAt(+d); }); }
+
+  // Post office shipping label (A5 landscape, Persian): sender, receiver, postal code
+  // boxes, address and delivery note in large clear type.
+  function buildLabelHtml(o) {
+    var co = (state.settings && state.settings.company) || DEFAULT_SETTINGS.company;
+    var shop = invoiceShopName(co);
+    var sPhone = toEnglishDigits(co.phone || SHOP_PHONE);
+    var sAddr = co.address || SHOP_ADDRESS;
+    var phones = [o.phone1, o.phone2].filter(Boolean).map(function (x) { return faDigits(toEnglishDigits(x)); });
+    var postal = toEnglishDigits(o.postalCode || '').replace(/\D/g, '');
+    if (!postal) {
+      var cust = (state.cache.customers || []).filter(function (c) { return c.id === o.customerId; })[0];
+      postal = cust ? toEnglishDigits(cust.postalCode || '').replace(/\D/g, '') : '';
+    }
+    // Iranian postal codes are 10 digits; always draw 10 boxes so a missing one can be written by hand.
+    var boxes = '';
+    for (var i = 0; i < Math.max(10, postal.length); i++) {
+      boxes += '<span class="pc' + (i === 5 ? ' gap' : '') + '">' + (postal.charAt(i) ? faDigits(postal.charAt(i)) : '') + '</span>';
+    }
+    var units = (o.products || []).concat(o.gifts || []).reduce(function (s, l) { return s + (num(l.qty) || 0); }, 0);
+    var d = J.dateFromIso(o.date);
+    var dateJ = d ? faDigits(J.formatJalali(d)) : '';
+    function row(k, v, cls) { return v ? '<div class="row ' + (cls || '') + '"><span class="k">' + k + '</span><span class="v">' + v + '</span></div>' : ''; }
+    var paw = '<svg viewBox="0 0 24 24" width="30" height="30" fill="#fff" aria-hidden="true">'
+      + '<ellipse cx="7" cy="7.2" rx="2.2" ry="2.8"/><ellipse cx="12" cy="5.4" rx="2.2" ry="2.8"/><ellipse cx="17" cy="7.2" rx="2.2" ry="2.8"/>'
+      + '<ellipse cx="20.4" cy="12" rx="1.9" ry="2.4"/><ellipse cx="3.6" cy="12" rx="1.9" ry="2.4"/>'
+      + '<path d="M12 11c3 0 6.5 4 6.5 7 0 2-1.6 3-3.3 3-1.3 0-2.1-.7-3.2-.7s-1.9.7-3.2.7C7.1 21 5.5 20 5.5 18c0-3 3.5-7 6.5-7Z"/></svg>';
+
+    return '<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><title>برچسب پستی #' + orderNo(o) + ' — ' + escapeHtml(o.customerName || '') + '</title>'
+      + '<link rel="stylesheet" href="' + escapeHtml(new URL('fonts/fonts.css', location.href).href) + '">'
+      + '<style>'
+      + '*{box-sizing:border-box}'
+      + 'html,body{margin:0;background:#fff}'
+      + 'body{font:14px/1.7 Vazirmatn,Tahoma,sans-serif;color:#15131f;padding:10mm;-webkit-print-color-adjust:exact;print-color-adjust:exact}'
+      + '.label{max-width:190mm;margin:0 auto;border:2px solid #15131f;border-radius:5mm;overflow:hidden}'
+      + '.top{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:4mm 6mm;background:linear-gradient(120deg,#7c5cfa,#4f8def);color:#fff}'
+      + '.brand{display:flex;align-items:center;gap:10px}'
+      + '.mark{width:46px;height:46px;border-radius:13px;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.4);display:grid;place-items:center}'
+      + '.shop{font:700 19px/1.2 Inter,Vazirmatn,sans-serif;direction:ltr}'
+      + '.site{font:500 12px/1.3 Inter,sans-serif;opacity:.9;direction:ltr;text-align:right}'
+      + '.ord{text-align:left}.ord .t{font-size:12px;opacity:.9}.ord .n{font:700 22px/1.2 Inter,Vazirmatn,sans-serif;direction:ltr}'
+      + '.sec{padding:4mm 6mm}'
+      + '.sec+.sec{border-top:2px dashed #15131f}'
+      + 'h2{margin:0 0 2mm;font-size:13px;font-weight:700;display:inline-block;padding:1px 12px;border-radius:999px;background:#15131f;color:#fff}'
+      + '.sender .line{display:flex;flex-wrap:wrap;gap:4px 24px;font-size:14px}'
+      + '.sender b{font-weight:700}'
+      + '.name{font-size:24px;font-weight:800;line-height:1.4;margin:1mm 0 2mm}'
+      + '.row{display:flex;gap:10px;align-items:baseline;margin-top:1.5mm}'
+      + '.row .k{flex:0 0 auto;min-width:74px;color:#5d5a70;font-size:13px}'
+      + '.row .v{font-size:16px;font-weight:600}'
+      + '.row.addr .v{font-size:18px;font-weight:700;line-height:1.8}'
+      + '.row.note .v{font-weight:600;border:1.5px solid #15131f;border-radius:3mm;padding:1mm 3mm;background:#fff8e6}'
+      + '.ltr{direction:ltr;unicode-bidi:embed;display:inline-block}'
+      + '.phones .v{font-size:19px;font-weight:700;letter-spacing:.04em}'
+      + '.pcs{display:inline-flex;direction:ltr;gap:3px}'
+      + '.pc{width:9mm;height:10mm;border:1.5px solid #15131f;border-radius:1.5mm;display:grid;place-items:center;font-size:19px;font-weight:700}'
+      + '.pc.gap{margin-left:3mm}'
+      + '.foot{display:flex;justify-content:space-between;gap:12px;padding:2.5mm 6mm;border-top:2px solid #15131f;background:#f4f2fb;font-size:12.5px;color:#3d3a50}'
+      + '@media print{body{padding:0}@page{size:A5 landscape;margin:6mm}.label{max-width:none;break-inside:avoid}}'
+      + '</style></head><body><div class="label">'
+
+      + '<div class="top">'
+      +   '<div class="brand"><div class="mark">' + paw + '</div><div><div class="shop">' + escapeHtml(shop) + '</div><div class="site">' + SHOP_SITE + '</div></div></div>'
+      +   '<div class="ord"><div class="t">شماره سفارش</div><div class="n">#' + faDigits(orderNo(o)) + '</div></div>'
+      + '</div>'
+
+      + '<div class="sec sender"><h2>فرستنده</h2>'
+      +   '<div class="line"><span><b>' + escapeHtml(shop) + '</b></span>'
+      +   '<span>تلفن پشتیبانی: <b class="ltr">' + escapeHtml(faDigits(sPhone)) + '</b></span></div>'
+      +   '<div class="line"><span>' + escapeHtml(faDigits(sAddr)) + '</span></div>'
+      + '</div>'
+
+      + '<div class="sec receiver"><h2>گیرنده</h2>'
+      +   '<div class="name" dir="auto">' + escapeHtml(o.customerName || '') + '</div>'
+      +   row('شماره تماس:', phones.length ? phones.map(function (x) { return '<span class="ltr">' + escapeHtml(x) + '</span>'; }).join(' ، ') : '', 'phones')
+      +   row('کد پستی:', '<span class="pcs">' + boxes + '</span>')
+      +   row('آدرس:', escapeHtml(faDigits(o.address || '')) || '<span style="color:#9a97aa">........................................................................</span>', 'addr')
+      +   row('ایمیل:', o.email ? '<span class="ltr">' + escapeHtml(o.email) + '</span>' : '')
+      +   row('توضیحات:', escapeHtml(faDigits(o.deliveryNote || '')), 'note')
+      + '</div>'
+
+      + '<div class="foot"><span>تعداد اقلام: ' + faDigits(units) + (dateJ ? ' · تاریخ سفارش: <span class="ltr">' + dateJ + '</span>' : '') + '</span>'
+      +   '<span class="ltr">' + SHOP_SITE + '</span></div>'
+      + '</div></body></html>';
+  }
+
+  // Renders a document into a hidden iframe and triggers the print dialog
   // (after the fonts have loaded, so the Persian text prints in Vazirmatn).
-  function printInvoice(o) {
+  function printHtml(html) {
     var frame = el('iframe', { style: 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;' });
     document.body.appendChild(frame);
     var win = frame.contentWindow, doc = win.document;
@@ -1444,7 +1541,7 @@
       (doc.fonts && doc.fonts.ready ? doc.fonts.ready : Promise.resolve()).then(function () { setTimeout(go, 150); });
     });
     doc.open();
-    doc.write(buildInvoiceHtml(o));
+    doc.write(html);
     doc.close();
     function cleanup() { if (done) return; done = true; setTimeout(function () { frame.remove(); }, 500); }
     function go() {
@@ -3478,6 +3575,7 @@
     $('#c_phone2').value     = c.phone2 || '';
     $('#c_email').value      = c.email || '';
     $('#c_address').value    = c.address || '';
+    $('#c_postal').value     = c.postalCode || '';
     $('#c_petName').value    = c.petName || '';
     $('#c_petSpecies').value = c.petSpecies || '';
     $('#c_petBreed').value   = c.petBreed || '';
@@ -3516,6 +3614,7 @@
     record.phone2 = toEnglishDigits($('#c_phone2').value.trim());
     record.email = $('#c_email').value.trim();
     record.address = $('#c_address').value.trim();
+    record.postalCode = toEnglishDigits($('#c_postal').value).replace(/\D/g, '');
     record.petName = $('#c_petName').value.trim();
     record.petSpecies = $('#c_petSpecies').value;
     record.petBreed = $('#c_petBreed').value.trim();
@@ -3554,13 +3653,13 @@
 
     // ---- Business profile ----
     var inName  = el('input', { type: 'text', value: s.company.name || '' });
-    var inPhone = el('input', { type: 'text', value: s.company.phone || '' });
+    var inPhone = el('input', { type: 'text', value: s.company.phone || '', placeholder: SHOP_PHONE });
     var inTaxId = el('input', { type: 'text', value: s.company.taxId || '' });
-    var inAddr  = el('textarea', { rows: '2' }); inAddr.value = s.company.address || '';
+    var inAddr  = el('textarea', { rows: '2', placeholder: SHOP_ADDRESS, dir: 'auto' }); inAddr.value = s.company.address || '';
     var inNote  = el('textarea', { rows: '2' }); inNote.value = s.company.invoiceNote || '';
     var profileCard = el('div', { class: 'card' }, [
       el('h3', { style: 'margin-top:0' }, 'Business profile'),
-      el('p', { style: 'color:var(--muted)' }, 'Appears on printed reports (and on invoices once that module is added).'),
+      el('p', { style: 'color:var(--muted)' }, 'Printed on invoices and, as the sender, on post labels.'),
       el('div', { class: 'grid two' }, [
         el('label', { class: 'field' }, [el('span', {}, 'Business name'), inName]),
         el('label', { class: 'field' }, [el('span', {}, 'Phone'), inPhone])
@@ -3732,13 +3831,17 @@
     $('#orderModalTitle').textContent = orderOrNull ? ('Edit Order #' + orderNo(orderOrNull)) : 'New Order';
 
     // Invoice button only makes sense for a saved order.
-    var invoiceBtn = $('#invoiceOrderBtn');
+    var invoiceBtn = $('#invoiceOrderBtn'), labelBtn = $('#labelOrderBtn');
     if (orderOrNull) {
       invoiceBtn.classList.remove('hidden');
       invoiceBtn.onclick = function () { printInvoice(orderOrNull); };
+      labelBtn.classList.remove('hidden');
+      labelBtn.onclick = function () { printLabel(orderOrNull); };
     } else {
       invoiceBtn.classList.add('hidden');
       invoiceBtn.onclick = null;
+      labelBtn.classList.add('hidden');
+      labelBtn.onclick = null;
     }
 
     var dateField = $('#f_date');
@@ -3788,6 +3891,8 @@
       $('#f_discount').value = orderOrNull.discount || 0;
       $('#f_loss').value = orderOrNull.loss || 0;
       $('#f_address').value = orderOrNull.address || '';
+      $('#f_postal').value = orderOrNull.postalCode || '';
+      $('#f_deliveryNote').value = orderOrNull.deliveryNote || '';
       segSet('f_paid', !!orderOrNull.paid);
       segSet('f_shipped', !!orderOrNull.shipped);
       setSource(orderOrNull.source || '');
@@ -3808,6 +3913,8 @@
       $('#f_discount').value = 0;
       $('#f_loss').value = 0;
       $('#f_address').value = '';
+      $('#f_postal').value = '';
+      $('#f_deliveryNote').value = '';
       segSet('f_paid', false);   // default: unpaid
       segSet('f_shipped', false); // default: not sent
       setSource('');
@@ -3824,6 +3931,7 @@
         if (!$('#f_phone2').value) $('#f_phone2').value = match.phone2 || '';
         if (!$('#f_email').value)  $('#f_email').value  = match.email  || '';
         if (!$('#f_address').value) $('#f_address').value = match.address || '';
+        if (!$('#f_postal').value)  $('#f_postal').value  = match.postalCode || '';
       }
     };
 
@@ -4091,6 +4199,8 @@
       phone2: toEnglishDigits($('#f_phone2').value.trim()),
       email:  $('#f_email').value.trim(),
       address: $('#f_address').value.trim(),
+      postalCode: toEnglishDigits($('#f_postal').value).replace(/\D/g, ''),
+      deliveryNote: $('#f_deliveryNote').value.trim(),
       shipping: num($('#f_shipping').value) || 0,
       discount: num($('#f_discount').value) || 0,
       loss: num($('#f_loss').value) || 0,

@@ -209,7 +209,7 @@
         var cust = customers.filter(function (c) { return c.nameLower === ck && !c.archived; })[0];
         if (cust) {
           var changed = false;
-          ['phone1', 'phone2', 'email', 'address'].forEach(function (f) {
+          ['phone1', 'phone2', 'email', 'address', 'postalCode'].forEach(function (f) {
             if (order[f] && cust[f] !== order[f]) { cust[f] = order[f]; changed = true; }
           });
           if (changed) { cust.updatedAt = t0; cs.put(cust); }
@@ -217,7 +217,7 @@
           cust = {
             id: newId(), name: String(order.customerName || '').trim(), nameLower: ck,
             phone1: order.phone1 || '', phone2: order.phone2 || '', email: order.email || '',
-            address: order.address || '', createdAt: t0, updatedAt: t0
+            address: order.address || '', postalCode: order.postalCode || '', createdAt: t0, updatedAt: t0
           };
           cs.put(cust);
           customers.push(cust);
